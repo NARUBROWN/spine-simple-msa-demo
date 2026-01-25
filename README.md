@@ -9,7 +9,7 @@ Spine 프레임워크를 활용한 간단한 마이크로서비스 아키텍처(
 ## 아키텍처
 
 ```
-┌─────────────────┐      Kafka Event       ┌─────────────────┐
+┌─────────────────┐      Kafka Event        ┌─────────────────┐
 │  Order Service  │ ──────────────────────> │  Stock Service  │
 │   (HTTP API)    │   "order.created"       │    (Consumer)   │
 │   Port: 8080    │                         │   Port: 8081    │
