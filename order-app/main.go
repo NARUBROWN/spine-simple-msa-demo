@@ -1,6 +1,8 @@
 package main
 
 import (
+	"log"
+	"os"
 	"time"
 
 	"github.com/NARUBROWN/spine"
@@ -9,6 +11,11 @@ import (
 )
 
 func main() {
+	broker := os.Getenv("SPINE_DEMO_KAFKA_BROKER")
+	if broker == "" {
+		broker = "localhost:9092"
+	}
+
 	app := spine.New()
 
 	app.Constructor(
@@ -21,15 +28,19 @@ func main() {
 		(*controller.OrderController).Create,
 	)
 
-	app.Run(boot.Options{
+	if err := app.Run(boot.Options{
 		Address:                ":8080",
 		EnableGracefulShutdown: true,
 		ShutdownTimeout:        10 * time.Second,
 		Kafka: &boot.KafkaOptions{
-			Brokers: []string{"localhost:9092"},
+			Brokers:                []string{broker},
+			AllowInsecureTransport: true,
 			Write: &boot.KafkaWriteOptions{
 				TopicPrefix: "",
 			},
 		},
-	})
+		HTTP: &boot.HTTPOptions{},
+	}); err != nil {
+		log.Fatalf("Application failed: %v", err)
+	}
 }
