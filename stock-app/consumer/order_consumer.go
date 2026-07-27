@@ -2,19 +2,106 @@ package consumer
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
+	"time"
 
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
+	"github.com/NARUBROWN/spine-simple-msa/stock-app/store"
+	"github.com/NARUBROWN/spine/pkg/event/publish"
 )
 
-type OrderConsumer struct{}
+const availableQuantity = 100
 
-func NewOrderConsumer() *OrderConsumer {
-	return &OrderConsumer{}
+type OrderConsumer struct {
+	store *store.IdempotencyStore
+}
+
+func NewOrderConsumer(idempotencyStore *store.IdempotencyStore) *OrderConsumer {
+	return &OrderConsumer{store: idempotencyStore}
 }
 
 func (c *OrderConsumer) OnCreated(ctx context.Context, eventName string, event events.OrderCreated) error {
-	log.Println("Kafka Event:", eventName)
-	log.Println("OrderID:", event.OrderID)
+	if err := validate(event); err != nil {
+		return err
+	}
+
+	if event.Scenario == events.ScenarioPoison {
+		log.Printf("Poison event rejected: event=%s event_id=%s order_id=%d", eventName, event.EventID, event.OrderID)
+		return errors.New("poison event requested by demo scenario")
+	}
+
+	if decision, exists := c.store.Decision(event.EventID); exists {
+		log.Printf("Duplicate event detected: event=%s event_id=%s order_id=%d outcome=%s", eventName, event.EventID, event.OrderID, decision.Outcome)
+		publishDecision(ctx, decision)
+		return nil
+	}
+
+	attempt, err := c.store.Attempt(event.EventID)
+	if err != nil {
+		return fmt.Errorf("record delivery attempt: %w", err)
+	}
+	if attempt <= event.FailuresBeforeSuccess {
+		log.Printf("Transient processing failure: event=%s event_id=%s order_id=%d attempt=%d", eventName, event.EventID, event.OrderID, attempt)
+		return fmt.Errorf("transient failure requested by demo scenario (attempt %d)", attempt)
+	}
+
+	decision := decide(event)
+	if err := c.store.Save(decision); err != nil {
+		return fmt.Errorf("persist stock decision: %w", err)
+	}
+	publishDecision(ctx, decision)
+	log.Printf("Stock decision completed: event=%s event_id=%s order_id=%d outcome=%s attempt=%d", eventName, event.EventID, event.OrderID, decision.Outcome, attempt)
 	return nil
+}
+
+func validate(event events.OrderCreated) error {
+	if event.EventID == "" {
+		return errors.New("event_id is required")
+	}
+	if event.OrderID <= 0 {
+		return errors.New("order_id must be positive")
+	}
+	if event.Quantity <= 0 {
+		return errors.New("quantity must be positive")
+	}
+	return nil
+}
+
+func decide(event events.OrderCreated) store.Decision {
+	decision := store.Decision{
+		EventID:  event.EventID,
+		OrderID:  event.OrderID,
+		Quantity: event.Quantity,
+		Outcome:  "reserved",
+		At:       time.Now().UTC(),
+	}
+	if event.Quantity > availableQuantity {
+		decision.Outcome = "rejected"
+		decision.Reason = "insufficient stock"
+	}
+	return decision
+}
+
+func publishDecision(ctx context.Context, decision store.Decision) {
+	switch decision.Outcome {
+	case "reserved":
+		publish.Event(ctx, events.StockReserved{
+			EventID:       "stock-reserved-" + decision.EventID,
+			SourceEventID: decision.EventID,
+			OrderID:       decision.OrderID,
+			Quantity:      decision.Quantity,
+			At:            decision.At,
+		})
+	case "rejected":
+		publish.Event(ctx, events.StockRejected{
+			EventID:       "stock-rejected-" + decision.EventID,
+			SourceEventID: decision.EventID,
+			OrderID:       decision.OrderID,
+			Quantity:      decision.Quantity,
+			Reason:        decision.Reason,
+			At:            decision.At,
+		})
+	}
 }

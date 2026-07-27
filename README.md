@@ -1,118 +1,176 @@
 # Spine Simple MSA Demo
 
-Spine 프레임워크를 활용한 간단한 마이크로서비스 아키텍처(MSA) 데모 애플리케이션입니다.
+Spine `v0.5.1`과 Kafka로 주문·재고 서비스의 왕복 이벤트 흐름과 전달 신뢰성 경계를 보여주는 예제입니다.
 
-이 예제는 Spine `v0.5.1`을 사용합니다.
+## 처리 흐름
 
-## 개요
-
-이 프로젝트는 주문(Order)과 재고(Stock) 서비스 간의 이벤트 기반 통신을 보여주는 간단한 MSA 데모입니다. Order Service에서 주문이 생성되면 Kafka를 통해 이벤트를 발행하고, Stock Service가 해당 이벤트를 구독하여 처리합니다.
-
-## 아키텍처
-
-```
-┌─────────────────┐      Kafka Event        ┌─────────────────┐
-│  Order Service  │ ──────────────────────> │  Stock Service  │
-│   (HTTP API)    │   "order.created"       │    (Consumer)   │
-│   Port: 8080    │                         │  Kafka Worker  │
-└─────────────────┘                         └─────────────────┘
+```text
+POST /orders/:id
+        │
+        ▼
+ Order Service ── order.created ──▶ Stock Service
+        ▲                                │
+        └── stock.reserved/rejected ─────┘
+        │
+GET /orders/:id/status
 ```
 
-### 서비스 구성
+- Order Service는 HTTP 요청을 받아 안정적인 `event_id`가 포함된 `order.created`를 발행합니다.
+- Stock Service는 파일 기반 멱등 저장소에 처리 시도와 재고 결정을 기록합니다.
+- Stock Service는 `stock.reserved` 또는 `stock.rejected`를 발행합니다.
+- Order Service는 결과 이벤트를 멱등하게 반영하고 HTTP 상태 조회를 제공합니다.
 
-- **order-app**: 주문 생성 API를 제공하는 HTTP 서버
-  - 엔드포인트: `POST /orders/:order_id`
-  - Kafka로 주문 생성 이벤트 발행
+이 예제의 `event_id`는 `order-{order_id}-{scenario}-v1` 규칙을 사용합니다. 실제 시스템에서는 요청자가 제공하는 idempotency key나 영구 저장소에서 발급한 UUID를 사용하고, 주문 레코드와 함께 유일성 제약을 걸어야 합니다.
 
-- **stock-app**: 주문 이벤트를 소비하는 Kafka Consumer
-  - `order.created` 이벤트 구독
-  - 주문 정보를 로그로 출력
+## 실행
 
-- **shared**: 두 서비스 간 공유되는 코드 (이벤트 정의 등)
-
-## 사전 요구사항
-
-- Go 1.25.5 이상
-- Kafka (localhost:9092, 로컬 개발용 평문 연결)
-
-다른 브로커 주소를 사용할 때는 두 서비스에 동일한 환경변수를 지정하십시오.
+Kafka가 `localhost:9092`에서 실행 중이라고 가정합니다. 다른 주소는 두 프로세스에 같은 값으로 지정합니다.
 
 ```bash
 export SPINE_DEMO_KAFKA_BROKER=localhost:19092
 ```
 
-## 설치
+공유 브로커에서 다른 실행과 topic을 격리하려면 두 프로세스에 같은 접두사를 지정합니다.
 
 ```bash
-# 의존성 설치
-go mod download
+export SPINE_DEMO_TOPIC_PREFIX=my-demo.
 ```
 
-## 실행 방법
-
-### 1. Stock Service 실행
+터미널 1에서 Stock Service를 실행합니다.
 
 ```bash
-cd stock-app
-go run main.go
+go run ./stock-app
 ```
 
-Stock Service는 HTTP 포트를 열지 않고 Kafka 이벤트를 대기합니다.
-
-### 2. Order Service 실행
-
-새 터미널을 열고:
+터미널 2에서 Order Service를 실행합니다.
 
 ```bash
-cd order-app
-go run main.go
+go run ./order-app
 ```
 
-Order Service가 포트 8080에서 실행됩니다.
+Stock Service는 HTTP 포트를 열지 않는 Kafka worker입니다. Order Service는 Kafka 결과 consumer의 startup validation을 통과한 뒤에만 `:8080` HTTP listener를 엽니다.
 
-## API 사용법
+## 시나리오
 
-### 주문 생성
+### 정상 예약
 
 ```bash
-curl -X POST http://localhost:8080/orders/12345
+curl -i -X POST http://localhost:8080/orders/101
+curl http://localhost:8080/orders/101/status
 ```
 
-성공 시 응답:
-```
-OK
-```
+첫 요청은 `202 Accepted`와 `pending`을 반환합니다. 비동기 처리가 끝나면 상태가 `reserved`로 바뀝니다.
 
-주문이 생성되면:
-1. Order Service가 `order.created` 이벤트를 Kafka로 발행
-2. Stock Service가 해당 이벤트를 소비하여 로그 출력
+### 재고 부족
 
-Spine의 Kafka 전달은 최소 한 번(at-least-once) 방식입니다. 실제 재고 변경 로직을 추가할 때는 `OrderID` 같은 안정적인 키로 중복 처리를 방지해야 합니다. 영구적으로 실패하는 레코드는 해결될 때까지 해당 파티션 진행을 막을 수 있습니다.
-
-Stock Service 콘솔에서 다음과 같은 로그를 확인할 수 있습니다:
-```
-Kafka Event: order.created
-OrderID: 12345
+```bash
+curl -i -X POST http://localhost:8080/orders/102/large
+curl http://localhost:8080/orders/102/status
 ```
 
-이 저장소의 `AllowInsecureTransport: true` 설정은 `localhost:9092` 개발 환경만을 위한 것입니다. 운영 환경에서는 이 옵션을 제거하고 Kafka TLS를 구성하십시오.
+재고 수량 100보다 큰 주문이므로 결과는 `rejected`, 사유는 `insufficient stock`입니다.
 
-## 프로젝트 구조
+### 일시 실패와 재전달
 
+```bash
+curl -i -X POST http://localhost:8080/scenarios/transient/103
+curl http://localhost:8080/orders/103/status
 ```
-spine-simple-msa-demo/
-├── order-app/                 # 주문 서비스
-│   ├── controller/
-│   │   └── order_controller.go
-│   └── main.go
-├── stock-app/                 # 재고 서비스
-│   ├── consumer/
-│   │   └── order_consumer.go
-│   └── main.go
-├── shared/                    # 공유 코드
-│   └── events/
-│       ├── order_created.go
-│       └── stock_created.go
-├── go.mod
-└── go.sum
+
+Stock handler가 첫 처리에서 의도적으로 오류를 반환합니다. Kafka 메시지는 커밋되지 않고 reader가 재생성된 뒤 같은 offset이 다시 전달됩니다. 두 번째 처리에서 성공하며 로그에 `attempt=2`가 나타납니다.
+
+`Kafka.ConsumerRetry`는 reader 연결·읽기 오류나 실패한 ACK/NACK 뒤의 전송 계층 재생성을 제어합니다. handler 호출 횟수를 제한하거나 poison message를 건너뛰는 정책은 아닙니다.
+
+### 중복 이벤트와 멱등 처리
+
+동일한 요청을 다시 보내면 같은 `event_id`가 발행됩니다.
+
+```bash
+curl -X POST http://localhost:8080/orders/101
+curl -X POST http://localhost:8080/orders/101
+```
+
+Stock Service는 `.spine-demo/stock-state.json`의 기존 결정을 재사용하므로 재고 결정을 다시 수행하지 않습니다. 결과 이벤트는 다시 발행될 수 있으며 Order Service도 결과 `event_id`로 중복을 제거합니다. 실서비스에서는 이 파일 대신 트랜잭션과 유일성 제약을 제공하는 데이터베이스를 사용해야 합니다.
+
+동일한 주문 ID와 동일한 `event_id`를 재요청하면 완료 상태를 `pending`으로 되돌리지 않고 기존 상태를 유지합니다. 반대로 이미 사용된 주문 ID에 다른 시나리오를 요청하면 `409 Conflict`를 반환해 하나의 주문 ID가 서로 다른 이벤트를 가리키지 않도록 합니다.
+
+### Poison message와 파티션 정체
+
+다른 시나리오를 모두 실행한 뒤 마지막에 실행하십시오.
+
+```bash
+curl -X POST http://localhost:8080/scenarios/poison/104
+```
+
+Stock handler가 계속 오류를 반환하므로 해당 offset은 커밋되지 않습니다. Kafka는 같은 partition의 더 높은 offset만 안전하게 커밋할 수 없으므로 reader가 다시 만들어지고 poison event가 계속 재전달됩니다. 이 데모는 위험을 숨기지 않기 위해 자동 건너뛰기를 하지 않습니다. 운영에서는 재시도 횟수와 별도 retry/DLQ topic, 수동 격리 절차를 애플리케이션 정책으로 설계해야 합니다.
+
+## Transactional outbox 시나리오
+
+`scenarios/outbox`는 주문과 outbox 레코드를 하나의 파일 교체 연산으로 저장한 뒤 Kafka에 릴레이하는 컴파일 가능한 축소 구현입니다.
+
+```bash
+SPINE_DEMO_KAFKA_BROKER=localhost:9092 \
+  go run ./scenarios/outbox/cmd -order-id 201 -quantity 3
+```
+
+브로커가 중단되면 주문과 미발행 outbox 레코드는 `.spine-demo/outbox-state.json`에 남습니다. 같은 명령을 다시 실행하면 주문을 중복 생성하지 않고 대기 중인 메시지를 재발행합니다. 발행 성공과 `published_at` 기록 사이에 프로세스가 종료되면 중복 발행은 여전히 가능하므로 Stock의 멱등 처리가 필요합니다.
+
+이 파일 구현은 원리를 보여주기 위한 것입니다. 운영 환경에서는 주문 테이블과 outbox 테이블을 같은 데이터베이스 트랜잭션에서 변경하고, 여러 relay worker가 경쟁해도 안전하도록 행 잠금이나 lease를 사용해야 합니다.
+
+## Startup readiness와 종료 drain
+
+두 서비스는 `ConsumerRetry`를 명시적으로 설정합니다.
+
+- 최초 지연 200ms, 최대 지연 2초, 배수 2, 지터 20%
+- `MaxAttempts`를 생략해 일시적인 브로커 장애에서 무제한 재시도
+- consumer startup validation이 끝나기 전에는 Order HTTP listener를 노출하지 않음
+- `SIGINT`/`SIGTERM`을 받으면 새 작업을 중단하고 실행 중인 consumer handler와 publisher를 정리
+
+무제한 startup retry는 오케스트레이터가 프로세스 생존과 readiness를 구분한다는 전제입니다. 빠른 실패가 필요한 배포 환경에서는 `MaxAttempts`를 양수로 설정하십시오.
+
+## Docker E2E
+
+다음 명령은 Redpanda 컨테이너를 시작하고 실제 TCP/Kafka E2E를 실행한 뒤 컨테이너와 volume을 제거합니다.
+
+```bash
+./scripts/e2e.sh
+```
+
+포트가 사용 중이면 변경할 수 있습니다.
+
+```bash
+SPINE_DEMO_KAFKA_PORT=29092 ./scripts/e2e.sh
+```
+
+E2E는 다음을 검증합니다.
+
+- 브로커가 없을 때 consumer가 준비 완료 상태로 진행하지 않고 startup retry 수행
+- `order.created → stock.reserved/rejected` 실제 왕복
+- 일시 실패 뒤 같은 이벤트의 재전달과 두 번째 시도 성공
+- 동일 `event_id`의 영구 멱등 결정
+- poison event가 반복 전달되어 partition을 막는 동작
+- 종료 시 Order/Stock consumer drain
+
+기본 검증은 외부 인프라 없이 실행됩니다.
+
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
+```
+
+## 보안 경계
+
+이 저장소의 `AllowInsecureTransport: true`는 격리된 로컬 Kafka/Redpanda 평문 연결을 위한 명시적 opt-in입니다. 인터넷이나 신뢰할 수 없는 네트워크에 그대로 배포하면 안 됩니다. 운영 환경에서는 이 옵션을 제거하고 `KafkaOptions.TLS` 또는 인증 정보를 포함한 `Dialer`와 `Transport`를 함께 구성하십시오. consumer와 publisher 양쪽이 같은 보안 정책을 사용해야 합니다.
+
+## 구조
+
+```text
+order-app/             HTTP API와 Stock 결과 consumer
+stock-app/             Order consumer, 멱등 저장소, 결과 publisher
+shared/events/         서비스 간 이벤트 계약
+scenarios/outbox/      축소 transactional outbox와 Kafka relay
+e2e/                   실제 프로세스·Kafka E2E
+docker-compose.e2e.yml Redpanda 인프라
+scripts/e2e.sh         한 명령 E2E 실행기
 ```

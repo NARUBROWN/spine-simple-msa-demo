@@ -2,7 +2,10 @@ module github.com/NARUBROWN/spine-simple-msa
 
 go 1.25.5
 
-require github.com/NARUBROWN/spine v0.5.1
+require (
+	github.com/NARUBROWN/spine v0.5.1
+	github.com/segmentio/kafka-go v0.4.50
+)
 
 require (
 	github.com/gorilla/websocket v1.5.3 // indirect
@@ -13,7 +16,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/rabbitmq/amqp091-go v1.10.0 // indirect
-	github.com/segmentio/kafka-go v0.4.50 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	golang.org/x/crypto v0.47.0 // indirect
