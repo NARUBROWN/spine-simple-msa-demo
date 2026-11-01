@@ -1,6 +1,6 @@
 module github.com/NARUBROWN/spine-simple-msa/stock-app
 
-go 1.27.3
+go 1.25.5
 
 require (
 	github.com/NARUBROWN/spine v0.5.1

@@ -28,9 +28,9 @@ GET /orders/:id/status
 
 이 예제의 `event_id`는 `order-{order_id}-{scenario}-v1` 규칙을 사용합니다. 실제 시스템에서는 요청자가 제공하는 idempotency key나 영구 저장소에서 발급한 UUID를 사용하고, 주문 레코드와 함께 유일성 제약을 걸어야 합니다.
 
-## 요구사항
+## 권장 환경
 
-- Go 1.27.3 이상 (Go 1.27.x 검증 기준: 1.27.3)
+- 권장 Go 버전: 1.27.3
 
 ## Spine CLI 워크스페이스
 
