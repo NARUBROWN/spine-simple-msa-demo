@@ -14,8 +14,7 @@
 # Dependency directories (remove the comment below to include it)
 vendor/
 
-# Go workspace file
-go.work
+# 이 저장소는 서비스 모듈을 묶는 go.work를 추적합니다.
 
 # Build output
 bin/

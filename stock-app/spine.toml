@@ -1,0 +1,4 @@
+module = "github.com/NARUBROWN/spine-simple-msa/stock-app"
+entrypoint = "."
+composition = "./internal/application"
+port = 8080

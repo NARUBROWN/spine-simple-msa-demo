@@ -2,6 +2,12 @@
 
 Spine `v0.5.1`과 Kafka로 주문·재고 서비스의 왕복 이벤트 흐름과 전달 신뢰성 경계를 보여주는 예제입니다.
 
+**[Spine CLI](https://github.com/NARUBROWN/spine-cli)로 두 서비스를 빌드하고 검증한 예제입니다.**
+주문 서버와 재고 워커를 각각 CLI 프로젝트로 구성했습니다. 서비스 디렉터리에서 `spine dev`를
+실행하면 코드 변경을 감지하고, 자동 재빌드가 성공할 때 서비스를 새 코드로 교체합니다.
+개발 서버 실행, 실행 계약 검사와 구성 요소 생성을 한 도구로 이어가고 싶다면
+[Spine CLI의 명령과 사용 예제](https://github.com/NARUBROWN/spine-cli#readme)를 확인하세요.
+
 ## 처리 흐름
 
 ```text
@@ -26,9 +32,41 @@ GET /orders/:id/status
 
 - Go 1.27.3 이상 (Go 1.27.x 검증 기준: 1.27.3)
 
-## 실행
+## Spine CLI 워크스페이스
 
-Kafka가 `localhost:9092`에서 실행 중이라고 가정합니다. 다른 주소는 두 프로세스에 같은 값으로 지정합니다.
+Spine CLI 설치와 전체 사용법은 [공식 CLI 저장소](https://github.com/NARUBROWN/spine-cli#readme)를 참고하세요.
+이 예제의 계약 검증에는 이번 호환 보완이 포함된 개발 작업본이 필요합니다. 해당 `spine-cli` 소스
+디렉터리에서 `go install ./cmd/spine`으로 설치합니다.
+공개 v0.1.4 태그에는 환경변수 등록과 패키지별 핸들러 분석 보완이 포함되어 있지 않습니다.
+
+각 서비스가 독립적인 Go 모듈·CLI 프로젝트입니다. 루트는 공유 이벤트·outbox·E2E 모듈이고
+go.work가 세 모듈을 연결합니다. 서비스는 로컬 replace로 공유 모듈을 참조합니다.
+CLI의 --root에는 order-app 또는 stock-app을 지정합니다.
+
+```bash
+spine context --root ./order-app --json
+spine contract check --root ./order-app --json
+spine verify --root ./order-app --json
+spine contract probe --root ./order-app --json
+
+spine context --root ./stock-app --json
+spine contract check --root ./stock-app --json
+spine verify --root ./stock-app --json
+spine contract probe --root ./stock-app --json
+
+./scripts/check.sh
+```
+
+BuildApplication은 브로커 접속과 리스너 시작을 하지 않으며, 재고 상태 파일도 열지 않습니다.
+평문 로컬 브로커 설정은 INSECURE_TRANSPORT_ENABLED 경고로 표시되며,
+--warnings-as-errors를 붙이면 실패합니다. 토픽 접두사는 검사 시점의 환경변수 값으로 해석하므로
+CLI 검사와 실제 서비스에 같은 값을 전달해야 합니다. 부분 probe와 외부 Kafka E2E는 별개입니다.
+
+## Spine CLI로 실행하기
+
+Go와 Spine CLI를 설치하고 Kafka 또는 Redpanda를 먼저 실행합니다.
+기본 브로커 주소는 `localhost:9092`입니다. 다른 주소를 사용한다면 아래처럼 두 서비스의 터미널에
+같은 값을 설정합니다. 다음은 브로커가 `localhost:19092`에서 실행 중인 경우의 예입니다.
 
 ```bash
 export SPINE_DEMO_KAFKA_BROKER=localhost:19092
@@ -40,16 +78,26 @@ export SPINE_DEMO_KAFKA_BROKER=localhost:19092
 export SPINE_DEMO_TOPIC_PREFIX=my-demo.
 ```
 
-터미널 1에서 Stock Service를 실행합니다.
+터미널 1에서 저장소 루트의 `stock-app` 디렉터리로 이동해 Stock Service를 실행합니다.
 
 ```bash
-go run ./stock-app
+cd stock-app
+spine dev
 ```
 
-터미널 2에서 Order Service를 실행합니다.
+터미널 2에서 저장소 루트의 `order-app` 디렉터리로 이동해 Order Service를 실행합니다.
 
 ```bash
-go run ./order-app
+cd order-app
+spine dev
+```
+
+저장소 루트에서 실행하려면 각각 `spine dev --root ./stock-app`, `spine dev --root ./order-app`을
+사용할 수도 있습니다. 실행 중인 터미널과 별도로, 각 서비스 디렉터리에서 다음 명령으로 빌드와 검증을 수행합니다.
+
+```bash
+spine build
+spine verify
 ```
 
 Stock Service는 HTTP 포트를 열지 않는 Kafka worker입니다. Order Service는 Kafka 결과 consumer의 startup validation을 통과한 뒤에만 `:8080` HTTP listener를 엽니다.
@@ -155,12 +203,11 @@ E2E는 다음을 검증합니다.
 - poison event가 반복 전달되어 partition을 막는 동작
 - 종료 시 Order/Stock consumer drain
 
-기본 검증은 외부 인프라 없이 실행됩니다.
+기본 검증은 외부 인프라 없이 각 CLI 프로젝트와 루트 모듈을 순회합니다.
+루트에서 `go test ./...`만 실행하면 서비스 모듈은 제외되므로 전체 검증에는 다음 스크립트를 사용합니다.
 
 ```bash
-go test ./...
-go test -race ./...
-go vet ./...
+./scripts/check.sh
 ```
 
 ## 보안 경계
@@ -169,12 +216,32 @@ go vet ./...
 
 ## 구조
 
+다음과 같이 기존 main의 구성을 서비스별 internal/application으로 옮겼습니다.
+도메인 패키지와 공유 이벤트·outbox의 위치는 유지했습니다.
+
 ```text
-order-app/             HTTP API와 Stock 결과 consumer
-stock-app/             Order consumer, 멱등 저장소, 결과 publisher
-shared/events/         서비스 간 이벤트 계약
-scenarios/outbox/      축소 transactional outbox와 Kafka relay
-e2e/                   실제 프로세스·Kafka E2E
-docker-compose.e2e.yml Redpanda 인프라
-scripts/e2e.sh         한 명령 E2E 실행기
+.
+├── go.mod / go.sum                  # 공유 이벤트·outbox·외부 E2E 모듈
+├── go.work                         # 루트·주문·재고 모듈 연결
+├── order-app/
+│   ├── go.mod / go.sum / spine.toml
+│   ├── main.go                     # 구성 호출, 검증과 실행
+│   ├── internal/application/       # 주문 BuildApplication과 테스트
+│   └── consumer/ controller/ state/
+├── stock-app/
+│   ├── go.mod / go.sum / spine.toml
+│   ├── main.go                     # 구성 호출, 검증과 실행
+│   ├── internal/application/       # 재고 BuildApplication과 지연 저장소 생성자
+│   └── consumer/ store/
+├── shared/events/
+├── scenarios/outbox/
+├── e2e/
+└── scripts/
+    ├── check.sh                    # 모든 모듈의 CLI·vet·race 검사
+    └── e2e.sh
 ```
+
+
+CLI는 서비스 디렉터리에서 실행하므로 재고 상태 파일의 기본 위치는
+stock-app/.spine-demo/stock-state.json입니다. 저장 위치를 고정하려면 SPINE_DEMO_STOCK_STATE에
+절대 경로를 지정합니다. SPINE_DEMO_ORDER_ADDRESS가 없으면 CLI의 SPINE_PORT를 사용합니다.
