@@ -1,23 +1,23 @@
-package consumer
+package stock
 
 import (
 	"context"
 	"log"
 
-	"github.com/NARUBROWN/spine-simple-msa/order-app/state"
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/order"
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 )
 
 type StockConsumer struct {
-	tracker *state.OrderTracker
+	tracker *order.OrderTracker
 }
 
-func NewStockConsumer(tracker *state.OrderTracker) *StockConsumer {
+func NewStockConsumer(tracker *order.OrderTracker) *StockConsumer {
 	return &StockConsumer{tracker: tracker}
 }
 
 func (c *StockConsumer) OnReserved(_ context.Context, eventName string, event events.StockReserved) error {
-	updated := c.tracker.Complete(event.EventID, state.OrderStatus{
+	updated := c.tracker.Complete(event.EventID, order.OrderStatus{
 		OrderID:   event.OrderID,
 		EventID:   event.SourceEventID,
 		Status:    "reserved",
@@ -28,7 +28,7 @@ func (c *StockConsumer) OnReserved(_ context.Context, eventName string, event ev
 }
 
 func (c *StockConsumer) OnRejected(_ context.Context, eventName string, event events.StockRejected) error {
-	updated := c.tracker.Complete(event.EventID, state.OrderStatus{
+	updated := c.tracker.Complete(event.EventID, order.OrderStatus{
 		OrderID:   event.OrderID,
 		EventID:   event.SourceEventID,
 		Status:    "rejected",

@@ -22,7 +22,13 @@ func TestBuildApplicationDoesNotReadStateOrConnectToBroker(t *testing.T) {
 		t.Fatal(err)
 	}
 	registrations := app.Consumers().Registrations()
-	if len(registrations) != 1 || registrations[0].Topic != "test.order.created" || options.Kafka.Write.TopicPrefix != "test." {
+	if options.Kafka.Write.TopicPrefix != "test." {
 		t.Fatalf("consumer/publisher prefix mismatch: %#v / %#v", registrations, options.Kafka.Write)
 	}
+	for _, registration := range registrations {
+		if registration.Topic == "test.order.created" && registration.Meta.Method.Name == "OnCreated" {
+			return
+		}
+	}
+	t.Fatalf("order.created consumer is missing: %#v", registrations)
 }

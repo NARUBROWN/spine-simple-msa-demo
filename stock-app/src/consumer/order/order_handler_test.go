@@ -1,4 +1,4 @@
-package consumer
+package order
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
-	"github.com/NARUBROWN/spine-simple-msa/stock-app/store"
+	"github.com/NARUBROWN/spine-simple-msa/stock-app/internal/store"
 	"github.com/NARUBROWN/spine/pkg/event/publish"
 )
 

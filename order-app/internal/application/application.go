@@ -4,27 +4,20 @@ import (
 	"os"
 	"time"
 
+	stockconsumer "github.com/NARUBROWN/spine-simple-msa/order-app/src/consumer/stock"
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/order"
+
 	"github.com/NARUBROWN/spine"
-	"github.com/NARUBROWN/spine-simple-msa/order-app/consumer"
-	"github.com/NARUBROWN/spine-simple-msa/order-app/controller"
-	"github.com/NARUBROWN/spine-simple-msa/order-app/state"
 	"github.com/NARUBROWN/spine/pkg/boot"
 )
 
 // BuildApplication은 브로커나 HTTP 리스너에 연결하지 않고 주문 서비스를 구성합니다.
 func BuildApplication() (spine.App, boot.Options, error) {
 	app := spine.New()
-	app.Constructor(state.NewOrderTracker, controller.NewOrderController, consumer.NewStockConsumer)
-	app.Route("POST", "/orders/:order_id", (*controller.OrderController).Create)
-	app.Route("POST", "/orders/:order_id/large", (*controller.OrderController).CreateLarge)
-	app.Route("POST", "/scenarios/transient/:order_id", (*controller.OrderController).CreateTransient)
-	app.Route("POST", "/scenarios/poison/:order_id", (*controller.OrderController).CreatePoison)
-	app.Route("GET", "/orders/:order_id/status", (*controller.OrderController).Status)
-
-	if err := app.Consumers().Register(os.Getenv("SPINE_DEMO_TOPIC_PREFIX")+"stock.reserved", (*consumer.StockConsumer).OnReserved); err != nil {
+	if err := order.Register(app); err != nil {
 		return nil, boot.Options{}, err
 	}
-	if err := app.Consumers().Register(os.Getenv("SPINE_DEMO_TOPIC_PREFIX")+"stock.rejected", (*consumer.StockConsumer).OnRejected); err != nil {
+	if err := stockconsumer.Register(app); err != nil {
 		return nil, boot.Options{}, err
 	}
 	return app, boot.Options{

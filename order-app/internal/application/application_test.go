@@ -13,7 +13,19 @@ func TestBuildApplicationKeepsConsumerAndPublisherPrefixAligned(t *testing.T) {
 		t.Fatal(err)
 	}
 	registrations := app.Consumers().Registrations()
-	if len(registrations) != 2 || registrations[0].Topic != "test.stock.reserved" || registrations[1].Topic != "test.stock.rejected" || options.Kafka.Write.TopicPrefix != "test." {
+	if options.Kafka.Write.TopicPrefix != "test." {
 		t.Fatalf("consumer/publisher prefix mismatch: %#v / %#v", registrations, options.Kafka.Write)
+	}
+	for topic, method := range map[string]string{"test.stock.reserved": "OnReserved", "test.stock.rejected": "OnRejected"} {
+		found := false
+		for _, registration := range registrations {
+			if registration.Topic == topic && registration.Meta.Method.Name == method {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("consumer %s.%s is missing: %#v", topic, method, registrations)
+		}
 	}
 }

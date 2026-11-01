@@ -1,6 +1,6 @@
 # Spine Simple MSA Demo
 
-Spine `v0.5.1`과 Kafka로 주문·재고 서비스의 왕복 이벤트 흐름과 전달 신뢰성 경계를 보여주는 예제입니다.
+Spine `v0.5.1`과 Kafka로 주문, 재고 서비스의 왕복 이벤트 흐름과 전달 신뢰성 경계를 보여주는 예제입니다.
 
 **[Spine CLI](https://github.com/NARUBROWN/spine-cli)로 두 서비스를 빌드하고 검증한 예제입니다.**
 주문 서버와 재고 워커를 각각 CLI 프로젝트로 구성했습니다. 서비스 디렉터리에서 `spine dev`를
@@ -39,7 +39,7 @@ Spine CLI 설치와 전체 사용법은 [공식 CLI 저장소](https://github.co
 디렉터리에서 `go install ./cmd/spine`으로 설치합니다.
 공개 v0.1.4 태그에는 환경변수 등록과 패키지별 핸들러 분석 보완이 포함되어 있지 않습니다.
 
-각 서비스가 독립적인 Go 모듈·CLI 프로젝트입니다. 루트는 공유 이벤트·outbox·E2E 모듈이고
+각 서비스가 독립적인 Go 모듈, CLI 프로젝트입니다. 루트는 공유 이벤트, outbox, E2E 모듈이고
 go.work가 세 모듈을 연결합니다. 서비스는 로컬 replace로 공유 모듈을 참조합니다.
 CLI의 --root에는 order-app 또는 stock-app을 지정합니다.
 
@@ -131,7 +131,7 @@ curl http://localhost:8080/orders/103/status
 
 Stock handler가 첫 처리에서 의도적으로 오류를 반환합니다. Kafka 메시지는 커밋되지 않고 reader가 재생성된 뒤 같은 offset이 다시 전달됩니다. 두 번째 처리에서 성공하며 로그에 `attempt=2`가 나타납니다.
 
-`Kafka.ConsumerRetry`는 reader 연결·읽기 오류나 실패한 ACK/NACK 뒤의 전송 계층 재생성을 제어합니다. handler 호출 횟수를 제한하거나 poison message를 건너뛰는 정책은 아닙니다.
+`Kafka.ConsumerRetry`는 reader 연결, 읽기 오류나 실패한 ACK/NACK 뒤의 전송 계층 재생성을 제어합니다. handler 호출 횟수를 제한하거나 poison message를 건너뛰는 정책은 아닙니다.
 
 ### 중복 이벤트와 멱등 처리
 
@@ -216,31 +216,69 @@ E2E는 다음을 검증합니다.
 
 ## 구조
 
-다음과 같이 기존 main의 구성을 서비스별 internal/application으로 옮겼습니다.
-도메인 패키지와 공유 이벤트·outbox의 위치는 유지했습니다.
+각 서비스의 `BuildApplication`은 실행 옵션과 모듈 연결을 담당합니다.
+HTTP 모듈은 `src/order/`, 메시지 소비자는 생성기의 `src/consumer/<이름>/` 규칙을 따릅니다.
 
 ```text
 .
-├── go.mod / go.sum                  # 공유 이벤트·outbox·외부 E2E 모듈
-├── go.work                         # 루트·주문·재고 모듈 연결
+├── go.mod / go.sum                  # 공유 이벤트, outbox, 외부 E2E 모듈
+├── go.work                         # 루트, 주문, 재고 모듈 연결
 ├── order-app/
 │   ├── go.mod / go.sum / spine.toml
 │   ├── main.go                     # 구성 호출, 검증과 실행
 │   ├── internal/application/       # 주문 BuildApplication과 테스트
-│   └── consumer/ controller/ state/
+│   └── src/
+│       ├── order/                  # 주문 HTTP 모듈
+│       │   ├── order_route.go      # Register: 생성자와 HTTP 라우트
+│       │   ├── order_controller.go
+│       │   ├── order_tracker.go
+│       │   └── order_tracker_test.go
+│       └── consumer/stock/
+│           ├── module.go           # Register: 재고 결과 수신 계약
+│           └── stock_handler.go
 ├── stock-app/
 │   ├── go.mod / go.sum / spine.toml
 │   ├── main.go                     # 구성 호출, 검증과 실행
-│   ├── internal/application/       # 재고 BuildApplication과 지연 저장소 생성자
-│   └── consumer/ store/
+│   ├── internal/application/       # 재고 BuildApplication과 테스트
+│   ├── internal/store/             # 파일 기반 멱등 처리 저장소
+│   └── src/consumer/order/
+│       ├── module.go               # Register: 지연 저장소 생성자와 주문 수신 계약
+│       ├── order_handler.go
+│       └── order_handler_test.go
 ├── shared/events/
 ├── scenarios/outbox/
 ├── e2e/
 └── scripts/
-    ├── check.sh                    # 모든 모듈의 CLI·vet·race 검사
+    ├── check.sh                    # 모든 모듈의 CLI, vet, race 검사
     └── e2e.sh
 ```
 
+
+소비자는 `spine g consumer stock --topic stock.reserved --field event_id:string --no-register`와
+`spine g consumer order --topic order.created --field event_id:string --no-register`로 생성한 모듈에
+기존 구현을 옮겼습니다. 두 서비스가 같은 이벤트 형식을 사용하도록 생성된 메시지 타입 대신
+기존 `shared/events/`의 타입을 사용합니다. 각 `module.go`는 환경변수의 토픽 접두사를 반영합니다.
+
+주문 컨트롤러는 `order-app/src/order/`에서 `spine g controller order --no-register`로 생성한
+파일에 기존 구현을 옮겼습니다. 주문 상태와 컨트롤러를 같은 `order` 패키지에 모으고,
+`order_route.go`의 `Register(app)`에서 생성자와 HTTP 라우트를 등록합니다.
+
+| 이전 위치 | 현재 위치 |
+| --- | --- |
+| `order-app/controller/`, `order-app/state/` | `order-app/src/order/` |
+| `order-app/consumer/` | `order-app/src/consumer/stock/` |
+| `stock-app/consumer/` | `stock-app/src/consumer/order/` |
+| `stock-app/store/` | `stock-app/internal/store/` |
+
+새 소비자도 같은 규칙으로 추가할 수 있습니다. 예를 들어 `stock-app/`에서 다음 명령으로
+`src/consumer/restock/`의 생성 계획을 확인합니다.
+
+```sh
+spine g consumer restock --topic stock.restock --field quantity:int --dry-run --json
+```
+
+출력된 `base_hash`를 `--if-match`로 전달하면 파일 생성과 `BuildApplication` 등록을 함께
+적용합니다. 생성된 핸들러의 이벤트 처리 로직은 직접 구현합니다.
 
 CLI는 서비스 디렉터리에서 실행하므로 재고 상태 파일의 기본 위치는
 stock-app/.spine-demo/stock-state.json입니다. 저장 위치를 고정하려면 SPINE_DEMO_STOCK_STATE에
