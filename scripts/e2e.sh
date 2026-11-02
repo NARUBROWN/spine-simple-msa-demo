@@ -11,4 +11,4 @@ cleanup() {
 trap cleanup EXIT
 
 docker compose -f "${compose_file}" up -d --wait
-SPINE_DEMO_E2E_BROKER="127.0.0.1:${kafka_port}" go test -tags=e2e -v ./e2e
+SPINE_DEMO_E2E_BROKER="127.0.0.1:${kafka_port}" go test -count=1 -tags=e2e -v ./e2e

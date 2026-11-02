@@ -1,6 +1,6 @@
 # Spine Simple MSA Demo
 
-Spine `v0.5.1`과 Kafka로 주문, 재고 서비스의 왕복 이벤트 흐름과 전달 신뢰성 경계를 보여주는 예제입니다.
+Spine `v0.6.0`과 Kafka로 주문, 재고 서비스의 왕복 이벤트 흐름과 전달 신뢰성 경계를 보여주는 예제입니다.
 
 **[Spine CLI](https://github.com/NARUBROWN/spine-cli)로 두 서비스를 빌드하고 검증한 예제입니다.**
 주문 서버와 재고 워커를 각각 CLI 프로젝트로 구성했습니다. 서비스 디렉터리에서 `spine dev`를
@@ -30,29 +30,40 @@ GET /orders/:id/status
 
 ## 권장 환경
 
-- 권장 Go 버전: 1.27.3
+- 최소 Go 버전: 1.25.5
+- 검증한 Go 버전: 1.26.0
 
 ## Spine CLI 워크스페이스
 
-Spine CLI 설치와 전체 사용법은 [공식 CLI 저장소](https://github.com/NARUBROWN/spine-cli#readme)를 참고하세요.
-이 예제의 계약 검증에는 이번 호환 보완이 포함된 개발 작업본이 필요합니다. 해당 `spine-cli` 소스
-디렉터리에서 `go install ./cmd/spine`으로 설치합니다.
-공개 v0.1.4 태그에는 환경변수 등록과 패키지별 핸들러 분석 보완이 포함되어 있지 않습니다.
+공개 Spine CLI `v0.4.1`로 새 프로젝트를 생성하고 기존 API와 처리 로직을 이식했습니다.
+Go `1.25.5` 이상에서 다음 명령으로 같은 CLI를 설치할 수 있습니다. 이번 검증에는 Go `1.26.0`을 사용했습니다.
+
+```sh
+go install github.com/NARUBROWN/spine-cli/cmd/spine@v0.4.1
+spine version
+# spine-cli 0.4.1
+```
+
+HTTP 앱은 Spine `v0.6.0`, Echo 플랫폼 `v0.1.0`, Echo `v5.4.4`를 사용합니다.
+설치와 전체 명령은 [공식 CLI 저장소](https://github.com/NARUBROWN/spine-cli#readme)를 참고하세요.
 
 각 서비스가 독립적인 Go 모듈, CLI 프로젝트입니다. 루트는 공유 이벤트, outbox, E2E 모듈이고
 go.work가 세 모듈을 연결합니다. 서비스는 로컬 replace로 공유 모듈을 참조합니다.
-CLI의 --root에는 order-app 또는 stock-app을 지정합니다.
+CLI의 `--root`에는 `order-app` 또는 `stock-app`을 지정합니다.
+공개 CLI의 정적 모듈 검사는 활성 `go.work`를 지원하지 않으므로 계약 검사와 부분 probe에는
+`GOWORK=off`를 전달합니다. 서비스의 로컬 `replace`가 공유 모듈을 연결합니다.
+`spine dev`, `spine build`와 Kafka E2E는 기존 워크스페이스에서 실행합니다.
 
 ```bash
-spine context --root ./order-app --json
-spine contract check --root ./order-app --json
-spine verify --root ./order-app --json
-spine contract probe --root ./order-app --json
+GOWORK=off spine context --root ./order-app --json
+GOWORK=off spine contract check --root ./order-app --json
+GOWORK=off spine verify --root ./order-app --json
+GOWORK=off spine contract probe --root ./order-app --json
 
-spine context --root ./stock-app --json
-spine contract check --root ./stock-app --json
-spine verify --root ./stock-app --json
-spine contract probe --root ./stock-app --json
+GOWORK=off spine context --root ./stock-app --json
+GOWORK=off spine contract check --root ./stock-app --json
+GOWORK=off spine verify --root ./stock-app --json
+GOWORK=off spine contract probe --root ./stock-app --json
 
 ./scripts/check.sh
 ```
@@ -97,7 +108,7 @@ spine dev
 
 ```bash
 spine build
-spine verify
+GOWORK=off spine verify
 ```
 
 Stock Service는 HTTP 포트를 열지 않는 Kafka worker입니다. Order Service는 Kafka 결과 consumer의 startup validation을 통과한 뒤에만 `:8080` HTTP listener를 엽니다.
@@ -216,70 +227,57 @@ E2E는 다음을 검증합니다.
 
 ## 구조
 
-각 서비스의 `BuildApplication`은 실행 옵션과 모듈 연결을 담당합니다.
-HTTP 모듈은 `src/order/`, 메시지 소비자는 생성기의 `src/consumer/<이름>/` 규칙을 따릅니다.
+공개 CLI의 `spine new` 기본 구조와 역할별 생성기로 두 앱을 다시 구성했습니다.
+주문 앱은 `platform.New()`로 Echo v5를 선택하고, HTTP 없는 재고 워커는 `spine.New()`를
+사용합니다. 재고 워커에는 Echo 플랫폼 의존성과 HTTP 리스너를 추가하지 않습니다.
 
 ```text
 .
-├── go.mod / go.sum                  # 공유 이벤트, outbox, 외부 E2E 모듈
+├── go.mod / go.sum                  # 공유 이벤트, outbox와 Kafka E2E
 ├── go.work                         # 루트, 주문, 재고 모듈 연결
 ├── order-app/
-│   ├── go.mod / go.sum / spine.toml
-│   ├── main.go                     # 구성 호출, 검증과 실행
-│   ├── internal/application/       # 주문 BuildApplication과 테스트
+│   ├── go.mod / go.sum / spine.toml # layered-v1, Echo 플랫폼
+│   ├── main.go
+│   ├── internal/application/       # 생성자, 라우트, 소비자와 실행 옵션
 │   └── src/
-│       ├── order/                  # 주문 HTTP 모듈
-│       │   ├── order_route.go      # Register: 생성자와 HTTP 라우트
-│       │   ├── order_controller.go
-│       │   ├── order_tracker.go
-│       │   └── order_tracker_test.go
-│       └── consumer/stock/
-│           ├── module.go           # Register: 재고 결과 수신 계약
-│           └── stock_handler.go
+│       ├── controller/             # 기존 주문 HTTP 핸들러
+│       ├── service/                # 주문 상태와 결과 이벤트 멱등 반영
+│       ├── route/route.go          # 기존 5개 HTTP 경로
+│       └── consumer/stock/         # stock.reserved / stock.rejected
 ├── stock-app/
-│   ├── go.mod / go.sum / spine.toml
-│   ├── main.go                     # 구성 호출, 검증과 실행
-│   ├── internal/application/       # 재고 BuildApplication과 테스트
-│   ├── internal/store/             # 파일 기반 멱등 처리 저장소
-│   └── src/consumer/order/
-│       ├── module.go               # Register: 지연 저장소 생성자와 주문 수신 계약
-│       ├── order_handler.go
-│       └── order_handler_test.go
+│   ├── go.mod / go.sum / spine.toml # layered-v1, HTTP 없는 워커
+│   ├── main.go
+│   ├── internal/application/
+│   ├── internal/store/             # 기존 파일 기반 멱등 저장소
+│   └── src/consumer/order/         # order.created와 지연 저장소 생성자
 ├── shared/events/
 ├── scenarios/outbox/
 ├── e2e/
 └── scripts/
-    ├── check.sh                    # 모든 모듈의 CLI, vet, race 검사
-    └── e2e.sh
+    ├── check.sh                    # 각 모듈의 CLI 검사, vet와 race
+    └── e2e.sh                      # Redpanda와 실제 Kafka 왕복
 ```
 
+주문 상태는 `spine g service order-tracker`, 컨트롤러는
+`spine g controller order --depends src/service:OrderTrackerService`로 생성한 파일에
+옮겼습니다. HTTP 경로는 `spine g route`로 메서드, 경로와 기존 핸들러를 지정해 등록했습니다.
+생성자는 `BuildApplication`에서 연결하고 경로는 `route.Register(app)`로 등록합니다.
 
-소비자는 `spine g consumer stock --topic stock.reserved --field event_id:string --no-register`와
-`spine g consumer order --topic order.created --field event_id:string --no-register`로 생성한 모듈에
-기존 구현을 옮겼습니다. 두 서비스가 같은 이벤트 형식을 사용하도록 생성된 메시지 타입 대신
-기존 `shared/events/`의 타입을 사용합니다. 각 `module.go`는 환경변수의 토픽 접두사를 반영합니다.
+소비자는 `spine g consumer stock --topic stock.reserved --field event_id:string`과
+`spine g consumer order --topic order.created --field event_id:string`으로 생성한 모듈에
+기존 구현을 옮겼습니다. 생성된 메시지 대신 기존 `shared/events/` 타입을 사용하며,
+`module.go`는 환경변수의 토픽 접두사와 재고 결과의 두 수신 경로를 보존합니다.
 
-주문 컨트롤러는 `order-app/src/order/`에서 `spine g controller order --no-register`로 생성한
-파일에 기존 구현을 옮겼습니다. 주문 상태와 컨트롤러를 같은 `order` 패키지에 모으고,
-`order_route.go`의 `Register(app)`에서 생성자와 HTTP 라우트를 등록합니다.
-
-| 이전 위치 | 현재 위치 |
-| --- | --- |
-| `order-app/controller/`, `order-app/state/` | `order-app/src/order/` |
-| `order-app/consumer/` | `order-app/src/consumer/stock/` |
-| `stock-app/consumer/` | `stock-app/src/consumer/order/` |
-| `stock-app/store/` | `stock-app/internal/store/` |
-
-새 소비자도 같은 규칙으로 추가할 수 있습니다. 예를 들어 `stock-app/`에서 다음 명령으로
-`src/consumer/restock/`의 생성 계획을 확인합니다.
+추가 소비자의 생성 계획은 다음처럼 확인합니다.
 
 ```sh
-spine g consumer restock --topic stock.restock --field quantity:int --dry-run --json
+GOWORK=off spine g consumer restock --root ./stock-app --topic stock.restock --field quantity:int --dry-run --json
 ```
 
-출력된 `base_hash`를 `--if-match`로 전달하면 파일 생성과 `BuildApplication` 등록을 함께
-적용합니다. 생성된 핸들러의 이벤트 처리 로직은 직접 구현합니다.
+`changes`, `diff`, `base_hash`를 확인한 뒤 같은 명령에 `--if-match <base_hash>`를 전달합니다.
+생성된 핸들러의 이벤트 처리와 재전달 정책은 직접 구현합니다.
 
 CLI는 서비스 디렉터리에서 실행하므로 재고 상태 파일의 기본 위치는
-stock-app/.spine-demo/stock-state.json입니다. 저장 위치를 고정하려면 SPINE_DEMO_STOCK_STATE에
-절대 경로를 지정합니다. SPINE_DEMO_ORDER_ADDRESS가 없으면 CLI의 SPINE_PORT를 사용합니다.
+`stock-app/.spine-demo/stock-state.json`입니다. 저장 위치를 고정하려면
+`SPINE_DEMO_STOCK_STATE`에 절대 경로를 지정합니다. `SPINE_DEMO_ORDER_ADDRESS`가 없으면
+CLI의 `SPINE_PORT`를 사용합니다.

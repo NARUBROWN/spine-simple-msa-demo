@@ -5,16 +5,20 @@ import (
 	"time"
 
 	stockconsumer "github.com/NARUBROWN/spine-simple-msa/order-app/src/consumer/stock"
-	"github.com/NARUBROWN/spine-simple-msa/order-app/src/order"
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/controller"
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/route"
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
 
 	"github.com/NARUBROWN/spine"
+	platform "github.com/NARUBROWN/spine-echo-platform"
 	"github.com/NARUBROWN/spine/pkg/boot"
 )
 
 // BuildApplication은 브로커나 HTTP 리스너에 연결하지 않고 주문 서비스를 구성합니다.
 func BuildApplication() (spine.App, boot.Options, error) {
-	app := spine.New()
-	if err := order.Register(app); err != nil {
+	app := platform.New()
+	app.Constructor(service.NewOrderTrackerService, controller.NewOrderController)
+	if err := route.Register(app); err != nil {
 		return nil, boot.Options{}, err
 	}
 	if err := stockconsumer.Register(app); err != nil {

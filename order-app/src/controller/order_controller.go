@@ -1,9 +1,10 @@
-package order
+package controller
 
 import (
 	"context"
 	"net/http"
 
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 	"github.com/NARUBROWN/spine/pkg/event/publish"
 	"github.com/NARUBROWN/spine/pkg/httperr"
@@ -23,10 +24,10 @@ type OrderAccepted struct {
 }
 
 type OrderController struct {
-	tracker *OrderTracker
+	tracker *service.OrderTrackerService
 }
 
-func NewOrderController(tracker *OrderTracker) *OrderController {
+func NewOrderController(tracker *service.OrderTrackerService) *OrderController {
 	return &OrderController{tracker: tracker}
 }
 
@@ -46,12 +47,12 @@ func (c *OrderController) CreatePoison(ctx context.Context, orderID path.Int) (h
 	return c.publish(ctx, orderID.Value, defaultQuantity, events.ScenarioPoison, 0)
 }
 
-func (c *OrderController) Status(_ context.Context, orderID path.Int) (httpx.Response[OrderStatus], error) {
+func (c *OrderController) Status(_ context.Context, orderID path.Int) (httpx.Response[service.OrderStatus], error) {
 	status, ok := c.tracker.Get(orderID.Value)
 	if !ok {
-		return httpx.Response[OrderStatus]{}, httperr.NotFound("order status not found")
+		return httpx.Response[service.OrderStatus]{}, httperr.NotFound("order status not found")
 	}
-	return httpx.Response[OrderStatus]{Body: status}, nil
+	return httpx.Response[service.OrderStatus]{Body: status}, nil
 }
 
 func (c *OrderController) publish(ctx context.Context, orderID int64, quantity int, scenario string, failuresBeforeSuccess int) (httpx.Response[OrderAccepted], error) {

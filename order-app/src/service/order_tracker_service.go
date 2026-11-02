@@ -1,4 +1,4 @@
-package order
+package service
 
 import (
 	"sync"
@@ -13,20 +13,20 @@ type OrderStatus struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type OrderTracker struct {
+type OrderTrackerService struct {
 	mu      sync.RWMutex
 	orders  map[int64]OrderStatus
 	results map[string]struct{}
 }
 
-func NewOrderTracker() *OrderTracker {
-	return &OrderTracker{
+func NewOrderTrackerService() *OrderTrackerService {
+	return &OrderTrackerService{
 		orders:  make(map[int64]OrderStatus),
 		results: make(map[string]struct{}),
 	}
 }
 
-func (t *OrderTracker) Accepted(orderID int64, eventID string) (OrderStatus, bool) {
+func (t *OrderTrackerService) Accepted(orderID int64, eventID string) (OrderStatus, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if current, exists := t.orders[orderID]; exists {
@@ -37,7 +37,7 @@ func (t *OrderTracker) Accepted(orderID int64, eventID string) (OrderStatus, boo
 	return status, true
 }
 
-func (t *OrderTracker) Complete(resultEventID string, status OrderStatus) bool {
+func (t *OrderTrackerService) Complete(resultEventID string, status OrderStatus) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if _, exists := t.results[resultEventID]; exists {
@@ -52,7 +52,7 @@ func (t *OrderTracker) Complete(resultEventID string, status OrderStatus) bool {
 	return true
 }
 
-func (t *OrderTracker) Get(orderID int64) (OrderStatus, bool) {
+func (t *OrderTrackerService) Get(orderID int64) (OrderStatus, bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	status, ok := t.orders[orderID]

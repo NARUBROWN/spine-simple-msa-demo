@@ -4,20 +4,20 @@ import (
 	"context"
 	"log"
 
-	"github.com/NARUBROWN/spine-simple-msa/order-app/src/order"
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 )
 
 type StockConsumer struct {
-	tracker *order.OrderTracker
+	tracker *service.OrderTrackerService
 }
 
-func NewStockConsumer(tracker *order.OrderTracker) *StockConsumer {
+func NewStockConsumer(tracker *service.OrderTrackerService) *StockConsumer {
 	return &StockConsumer{tracker: tracker}
 }
 
 func (c *StockConsumer) OnReserved(_ context.Context, eventName string, event events.StockReserved) error {
-	updated := c.tracker.Complete(event.EventID, order.OrderStatus{
+	updated := c.tracker.Complete(event.EventID, service.OrderStatus{
 		OrderID:   event.OrderID,
 		EventID:   event.SourceEventID,
 		Status:    "reserved",
@@ -28,7 +28,7 @@ func (c *StockConsumer) OnReserved(_ context.Context, eventName string, event ev
 }
 
 func (c *StockConsumer) OnRejected(_ context.Context, eventName string, event events.StockRejected) error {
-	updated := c.tracker.Complete(event.EventID, order.OrderStatus{
+	updated := c.tracker.Complete(event.EventID, service.OrderStatus{
 		OrderID:   event.OrderID,
 		EventID:   event.SourceEventID,
 		Status:    "rejected",

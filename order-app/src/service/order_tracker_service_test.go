@@ -1,4 +1,4 @@
-package order
+package service
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 )
 
 func TestAcceptedKeepsCompletedStatusForDuplicateEvent(t *testing.T) {
-	tracker := NewOrderTracker()
+	tracker := NewOrderTrackerService()
 	if _, accepted := tracker.Accepted(1, "order-1-normal-v1"); !accepted {
 		t.Fatal("first event was rejected")
 	}
@@ -30,7 +30,7 @@ func TestAcceptedKeepsCompletedStatusForDuplicateEvent(t *testing.T) {
 }
 
 func TestAcceptedRejectsDifferentEventForExistingOrder(t *testing.T) {
-	tracker := NewOrderTracker()
+	tracker := NewOrderTrackerService()
 	if _, accepted := tracker.Accepted(1, "order-1-normal-v1"); !accepted {
 		t.Fatal("first event was rejected")
 	}
@@ -40,7 +40,7 @@ func TestAcceptedRejectsDifferentEventForExistingOrder(t *testing.T) {
 }
 
 func TestCompleteRejectsUnknownAndMismatchedSourceEvents(t *testing.T) {
-	tracker := NewOrderTracker()
+	tracker := NewOrderTrackerService()
 	status := OrderStatus{OrderID: 1, EventID: "order-1-normal-v1", Status: "reserved"}
 	if tracker.Complete("result-unknown", status) {
 		t.Fatal("result for an unknown order was applied")
