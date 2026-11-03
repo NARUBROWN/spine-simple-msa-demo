@@ -63,17 +63,23 @@ func (s *IdempotencyStore) Attempt(eventID string) (int, error) {
 }
 
 func (s *IdempotencyStore) Save(decision Decision) error {
+	_, err := s.SaveOrLoad(decision)
+	return err
+}
+
+// SaveOrLoad는 같은 이벤트 ID의 경쟁 처리에서도 저장된 하나의 결정을 반환합니다.
+func (s *IdempotencyStore) SaveOrLoad(decision Decision) (Decision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, exists := s.state.Decisions[decision.EventID]; exists {
-		return nil
+	if existing, exists := s.state.Decisions[decision.EventID]; exists {
+		return existing, nil
 	}
 	s.state.Decisions[decision.EventID] = decision
 	if err := s.persistLocked(); err != nil {
 		delete(s.state.Decisions, decision.EventID)
-		return err
+		return Decision{}, err
 	}
-	return nil
+	return decision, nil
 }
 
 func (s *IdempotencyStore) load() error {

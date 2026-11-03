@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/segmentio/kafka-go"
 )
 
 type synchronizedBuffer struct {
@@ -86,7 +89,7 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 		"SPINE_DEMO_TOPIC_PREFIX="+topicPrefix,
 	)
 	t.Cleanup(func() { stop(t, stock) })
-	waitForLog(t, stock.logs, "Starting consumer for topic '"+topicPrefix+"order.created'", 15*time.Second)
+	waitForLog(t, stock.logs, "Starting consumer for topic 'order.created'", 15*time.Second)
 
 	order := start(t, repositoryRoot, orderBinary,
 		"SPINE_DEMO_KAFKA_BROKER="+broker,
@@ -103,9 +106,39 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	waitForHTTP(t, baseURL+"/orders/999/status", 15*time.Second)
 
+	// DTO 규칙 위반은 서비스가 주문을 기록하거나 이벤트를 만들기 전에 거부합니다.
+	for _, body := range []string{`{"order_id":105,"quantity":0}`, `{"order_id":105,"quantity":-1}`, `{"order_id":0,"quantity":1}`, `{"order_id":105,"quantity":"bad"}`, `{`} {
+		response, err := http.Post(baseURL+"/orders", "application/json", strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("invalid body %s: status=%d", body, response.StatusCode)
+		}
+	}
+	response, err := http.Get(baseURL + "/orders/105/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("rejected DTO created an order: status=%d", response.StatusCode)
+	}
+
 	// 새 consumer group은 첫 할당 직전의 메시지를 놓칠 수 있으므로, 동일한 안정적
 	// event_id를 재발행하면서 양방향 consumer가 실제로 처리할 준비가 됐는지 확인합니다.
 	postUntilStatus(t, baseURL, 100, "reserved", 15*time.Second)
+
+	response, err = http.Post(baseURL+"/orders", "application/json", strings.NewReader(`{"order_id":105,"quantity":3}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusAccepted {
+		t.Fatalf("valid DTO: status=%d", response.StatusCode)
+	}
+	waitForStatus(t, baseURL, 105, "reserved", 15*time.Second)
 
 	post(t, baseURL+"/orders/101", http.StatusAccepted)
 	waitForStatus(t, baseURL, 101, "reserved", 15*time.Second)
@@ -122,6 +155,7 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 	waitForLog(t, stock.logs, "Duplicate event detected", 10*time.Second)
 	waitForStatus(t, baseURL, 101, "reserved", 5*time.Second)
 	post(t, baseURL+"/scenarios/transient/101", http.StatusConflict)
+	post(t, baseURL+"/orders/101/large", http.StatusConflict)
 	waitForStatus(t, baseURL, 101, "reserved", 5*time.Second)
 
 	post(t, baseURL+"/scenarios/poison/104", http.StatusAccepted)
@@ -135,6 +169,71 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 	if !strings.Contains(stock.logs.String(), "All consumers stopped") {
 		t.Fatalf("stock consumer did not drain:\n%s", stock.logs.String())
 	}
+
+	t.Run("consumer validates DTO before service and NACKs invalid delivery", func(t *testing.T) {
+		prefix := topicPrefix + "validation."
+		statePath := filepath.Join(temporaryDirectory, "validation.json")
+		// 이 격리 워커에는 결과 consumer가 없으므로 결과 토픽도 테스트가 준비합니다.
+		setupCtx, setupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer setupCancel()
+		conn, err := kafka.DialContext(setupCtx, "tcp", broker)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deadline, _ := setupCtx.Deadline()
+		conn.SetDeadline(deadline)
+		err = conn.CreateTopics(
+			kafka.TopicConfig{Topic: prefix + "order.created", NumPartitions: 1, ReplicationFactor: 1},
+			kafka.TopicConfig{Topic: prefix + "stock.reserved", NumPartitions: 1, ReplicationFactor: 1},
+		)
+		conn.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		worker := start(t, repositoryRoot, stockBinary,
+			"SPINE_DEMO_KAFKA_BROKER="+broker,
+			"SPINE_DEMO_STOCK_GROUP=e2e-validation-"+unique,
+			"SPINE_DEMO_STOCK_STATE="+statePath,
+			"SPINE_DEMO_TOPIC_PREFIX="+prefix,
+		)
+		t.Cleanup(func() { stop(t, worker) })
+		waitForLog(t, worker.logs, "Starting consumer for topic 'order.created'", 15*time.Second)
+		writer := &kafka.Writer{Addr: kafka.TCP(broker), Topic: prefix + "order.created",
+			RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true}
+		defer writer.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		// 실제 consumer group 할당을 확인한 뒤 잘못된 DTO를 보냅니다.
+		for !strings.Contains(worker.logs.String(), "order_id=501 outcome=reserved") {
+			if err := writer.WriteMessages(ctx, kafka.Message{Value: []byte(`{"event_id":"validation-ready","order_id":501,"quantity":1}`)}); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-ctx.Done():
+				t.Fatalf("consumer assignment: %s", worker.logs.String())
+			case <-time.After(200 * time.Millisecond):
+			}
+		}
+		if err := writer.WriteMessages(ctx, kafka.Message{Value: []byte(`{"event_id":"invalid-dto","order_id":502,"quantity":0}`)}); err != nil {
+			t.Fatal(err)
+		}
+		waitForOccurrences(t, worker.logs, "DTO validation failed", 2, 15*time.Second)
+		stop(t, worker)
+		data, err := os.ReadFile(statePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct {
+			Attempts  map[string]int             `json:"attempts"`
+			Decisions map[string]json.RawMessage `json:"decisions"`
+		}
+		if err := json.Unmarshal(data, &state); err != nil {
+			t.Fatal(err)
+		}
+		if state.Attempts["invalid-dto"] != 0 || state.Decisions["invalid-dto"] != nil {
+			t.Fatalf("invalid DTO reached reservation service: %s", data)
+		}
+	})
 }
 
 func postUntilStatus(t *testing.T, baseURL string, orderID int64, expected string, timeout time.Duration) {

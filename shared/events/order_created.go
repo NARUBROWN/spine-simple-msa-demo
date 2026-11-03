@@ -12,9 +12,9 @@ const (
 )
 
 type OrderCreated struct {
-	EventID               string    `json:"event_id"`
-	OrderID               int64     `json:"order_id"`
-	Quantity              int       `json:"quantity"`
+	EventID               string    `json:"event_id" validate:"required"`
+	OrderID               int64     `json:"order_id" validate:"gt=0"`
+	Quantity              int       `json:"quantity" validate:"gt=0"`
 	Scenario              string    `json:"scenario"`
 	FailuresBeforeSuccess int       `json:"failures_before_success,omitempty"`
 	At                    time.Time `json:"at"`

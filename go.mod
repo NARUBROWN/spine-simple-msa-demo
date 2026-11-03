@@ -1,6 +1,6 @@
 module github.com/NARUBROWN/spine-simple-msa
 
-go 1.25.5
+go 1.26.0
 
 require github.com/segmentio/kafka-go v0.4.50
 

@@ -21,12 +21,12 @@ func TestBuildApplicationDoesNotReadStateOrConnectToBroker(t *testing.T) {
 	if err := app.Validate(options); err != nil {
 		t.Fatal(err)
 	}
-	registrations := app.Consumers().Registrations()
-	if options.Kafka.Write.TopicPrefix != "test." {
-		t.Fatalf("consumer/publisher prefix mismatch: %#v / %#v", registrations, options.Kafka.Write)
+	if options.HTTP != nil {
+		t.Fatal("재고 워커에 HTTP가 활성화되었습니다")
 	}
+	registrations := app.Consumers().Registrations()
 	for _, registration := range registrations {
-		if registration.Topic == "test.order.created" && registration.Meta.Method.Name == "OnCreated" {
+		if registration.Topic == "order.created" && registration.Meta.Method.Name == "OnCreated" {
 			return
 		}
 	}

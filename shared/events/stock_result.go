@@ -3,10 +3,10 @@ package events
 import "time"
 
 type StockReserved struct {
-	EventID       string    `json:"event_id"`
-	SourceEventID string    `json:"source_event_id"`
-	OrderID       int64     `json:"order_id"`
-	Quantity      int       `json:"quantity"`
+	EventID       string    `json:"event_id" validate:"required"`
+	SourceEventID string    `json:"source_event_id" validate:"required"`
+	OrderID       int64     `json:"order_id" validate:"gt=0"`
+	Quantity      int       `json:"quantity" validate:"gt=0"`
 	At            time.Time `json:"at"`
 }
 
@@ -19,10 +19,10 @@ func (s StockReserved) OccurredAt() time.Time {
 }
 
 type StockRejected struct {
-	EventID       string    `json:"event_id"`
-	SourceEventID string    `json:"source_event_id"`
-	OrderID       int64     `json:"order_id"`
-	Quantity      int       `json:"quantity"`
+	EventID       string    `json:"event_id" validate:"required"`
+	SourceEventID string    `json:"source_event_id" validate:"required"`
+	OrderID       int64     `json:"order_id" validate:"gt=0"`
+	Quantity      int       `json:"quantity" validate:"gt=0"`
 	Reason        string    `json:"reason"`
 	At            time.Time `json:"at"`
 }

@@ -2,11 +2,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
+	"github.com/NARUBROWN/spine-simple-msa/order-app/src/dto"
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
-	"github.com/NARUBROWN/spine/pkg/event/publish"
 	"github.com/NARUBROWN/spine/pkg/httperr"
 	"github.com/NARUBROWN/spine/pkg/httpx"
 	"github.com/NARUBROWN/spine/pkg/path"
@@ -24,11 +25,11 @@ type OrderAccepted struct {
 }
 
 type OrderController struct {
-	tracker *service.OrderTrackerService
+	orders *service.OrderService
 }
 
-func NewOrderController(tracker *service.OrderTrackerService) *OrderController {
-	return &OrderController{tracker: tracker}
+func NewOrderController(orders *service.OrderService) *OrderController {
+	return &OrderController{orders: orders}
 }
 
 func (c *OrderController) Create(ctx context.Context, orderID path.Int) (httpx.Response[OrderAccepted], error) {
@@ -48,7 +49,7 @@ func (c *OrderController) CreatePoison(ctx context.Context, orderID path.Int) (h
 }
 
 func (c *OrderController) Status(_ context.Context, orderID path.Int) (httpx.Response[service.OrderStatus], error) {
-	status, ok := c.tracker.Get(orderID.Value)
+	status, ok := c.orders.Status(orderID.Value)
 	if !ok {
 		return httpx.Response[service.OrderStatus]{}, httperr.NotFound("order status not found")
 	}
@@ -56,17 +57,23 @@ func (c *OrderController) Status(_ context.Context, orderID path.Int) (httpx.Res
 }
 
 func (c *OrderController) publish(ctx context.Context, orderID int64, quantity int, scenario string, failuresBeforeSuccess int) (httpx.Response[OrderAccepted], error) {
-	if orderID <= 0 {
-		return httpx.Response[OrderAccepted]{}, httperr.BadRequest("order_id must be positive")
+	status, err := c.orders.Place(ctx, orderID, quantity, scenario, failuresBeforeSuccess)
+	if errors.Is(err, service.ErrInvalidOrder) {
+		return httpx.Response[OrderAccepted]{}, httperr.BadRequest(err.Error())
 	}
-	event := events.NewOrderCreated(orderID, quantity, scenario, failuresBeforeSuccess)
-	status, accepted := c.tracker.Accepted(orderID, event.EventID)
-	if !accepted {
-		return httpx.Response[OrderAccepted]{}, &httperr.HTTPError{Status: http.StatusConflict, Message: "order_id already belongs to a different request"}
+	if errors.Is(err, service.ErrOrderConflict) {
+		return httpx.Response[OrderAccepted]{}, &httperr.HTTPError{Status: http.StatusConflict, Message: err.Error()}
 	}
-	publish.Event(ctx, event)
+	if err != nil {
+		return httpx.Response[OrderAccepted]{}, err
+	}
 	return httpx.Response[OrderAccepted]{
-		Body:    OrderAccepted{EventID: event.EventID, OrderID: orderID, Status: status.Status},
-		Options: httpx.ResponseOptions{Status: 202},
+		Body:    OrderAccepted{EventID: status.EventID, OrderID: orderID, Status: status.Status},
+		Options: httpx.ResponseOptions{Status: http.StatusAccepted},
 	}, nil
+}
+
+// Submit의 JSON 바인딩과 validate 태그 검사는 Spine이 핸들러 호출 전에 수행합니다.
+func (c *OrderController) Submit(ctx context.Context, request *dto.CreateOrderRequest) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx, request.OrderID, request.Quantity, events.ScenarioNormal, 0)
 }

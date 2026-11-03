@@ -1,0 +1,29 @@
+name: Verify order and stock example
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache-dependency-path: |
+            go.sum
+            order-app/go.sum
+            stock-app/go.sum
+      - run: go install github.com/NARUBROWN/spine-cli/cmd/spine@v0.4.2
+      - run: |
+          go mod download
+          go -C order-app mod download
+          go -C stock-app mod download
+      - run: ./scripts/check.sh
+      - run: GOWORK=off spine contract probe --root ./order-app --json
+      - run: GOWORK=off spine contract probe --root ./stock-app --json
+      - run: ./scripts/e2e.sh

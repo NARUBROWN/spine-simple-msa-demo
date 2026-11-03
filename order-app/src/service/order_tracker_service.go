@@ -14,37 +14,43 @@ type OrderStatus struct {
 }
 
 type OrderTrackerService struct {
-	mu      sync.RWMutex
-	orders  map[int64]OrderStatus
-	results map[string]struct{}
+	mu         sync.RWMutex
+	orders     map[int64]OrderStatus
+	quantities map[int64]int
+	results    map[string]struct{}
 }
 
 func NewOrderTrackerService() *OrderTrackerService {
 	return &OrderTrackerService{
-		orders:  make(map[int64]OrderStatus),
-		results: make(map[string]struct{}),
+		orders:     make(map[int64]OrderStatus),
+		quantities: make(map[int64]int),
+		results:    make(map[string]struct{}),
 	}
 }
 
-func (t *OrderTrackerService) Accepted(orderID int64, eventID string) (OrderStatus, bool) {
+func (t *OrderTrackerService) Accepted(orderID int64, eventID string, quantity int) (OrderStatus, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if current, exists := t.orders[orderID]; exists {
-		return current, current.EventID == eventID
+		return current, current.EventID == eventID && t.quantities[orderID] == quantity
 	}
 	status := OrderStatus{OrderID: orderID, EventID: eventID, Status: "pending", UpdatedAt: time.Now().UTC()}
 	t.orders[orderID] = status
+	t.quantities[orderID] = quantity
 	return status, true
 }
 
 func (t *OrderTrackerService) Complete(resultEventID string, status OrderStatus) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if resultEventID == "" || (status.Status != "reserved" && status.Status != "rejected") {
+		return false
+	}
 	if _, exists := t.results[resultEventID]; exists {
 		return false
 	}
 	current, exists := t.orders[status.OrderID]
-	if !exists || current.EventID != status.EventID {
+	if !exists || current.EventID != status.EventID || current.Status != "pending" {
 		return false
 	}
 	t.results[resultEventID] = struct{}{}

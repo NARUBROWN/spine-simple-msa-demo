@@ -11,7 +11,7 @@ import (
 // Register는 지연 저장소 생성자와 주문 이벤트 수신 계약을 등록합니다.
 func Register(app spine.App) error {
 	app.Constructor(NewStockStore, NewOrderConsumer)
-	if err := app.Consumers().Register(os.Getenv("SPINE_DEMO_TOPIC_PREFIX")+"order.created", (*OrderConsumer).OnCreated); err != nil {
+	if err := app.Consumers().Register("order.created", (*OrderConsumer).OnCreated); err != nil {
 		return err
 	}
 	return nil

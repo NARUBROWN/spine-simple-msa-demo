@@ -7,6 +7,7 @@ import (
 
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 	"github.com/NARUBROWN/spine-simple-msa/stock-app/internal/store"
+	"github.com/NARUBROWN/spine-simple-msa/stock-app/src/service"
 	"github.com/NARUBROWN/spine/pkg/event/publish"
 )
 
@@ -23,7 +24,7 @@ func TestOrderConsumerRetriesThenDeduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := NewOrderConsumer(idempotencyStore)
+	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
 	bus := &recordingBus{}
 	ctx := context.WithValue(context.Background(), publish.PublisherKey, bus)
 	event := events.NewOrderCreated(10, 1, events.ScenarioTransient, 1)
@@ -50,7 +51,7 @@ func TestOrderConsumerRejectsPoisonEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := NewOrderConsumer(idempotencyStore)
+	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
 	event := events.NewOrderCreated(11, 1, events.ScenarioPoison, 0)
 	if err := consumer.OnCreated(context.Background(), event.Name(), event); err == nil {
 		t.Fatal("poison event must fail without being acknowledged")
@@ -65,7 +66,7 @@ func TestOrderConsumerPublishesRejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := NewOrderConsumer(idempotencyStore)
+	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
 	bus := &recordingBus{}
 	ctx := context.WithValue(context.Background(), publish.PublisherKey, bus)
 	event := events.NewOrderCreated(12, 1000, events.ScenarioNormal, 0)
