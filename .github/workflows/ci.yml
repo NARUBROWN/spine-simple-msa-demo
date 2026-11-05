@@ -32,12 +32,12 @@ jobs:
       - name: Install pinned Spine CLI
         env:
           CLI_VERSION: ${{ steps.channel.outputs.cli_version }}
-        run: go install "github.com/NARUBROWN/spine-cli@$CLI_VERSION"
+        run: go install "github.com/NARUBROWN/spine-cli/cmd/spine@$CLI_VERSION"
       - run: |
           go mod download all
           go -C order-app mod download all
           go -C stock-app mod download all
       - run: ./scripts/check.sh
-      - run: GOWORK=off spine-cli contract probe --root ./order-app --json
-      - run: GOWORK=off spine-cli contract probe --root ./stock-app --json
+      - run: GOWORK=off spine contract probe --root ./order-app --json
+      - run: GOWORK=off spine contract probe --root ./stock-app --json
       - run: ./scripts/e2e.sh

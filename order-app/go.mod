@@ -3,7 +3,7 @@ module github.com/NARUBROWN/spine-simple-msa/order-app
 go 1.26.0
 
 require (
-	github.com/NARUBROWN/spine v0.7.0-preview.1
+	github.com/NARUBROWN/spine v0.7.0-preview.2
 	github.com/NARUBROWN/spine-echo-platform v0.2.0-preview.1
 	github.com/NARUBROWN/spine-kafka-platform v0.2.0-preview.1
 	github.com/NARUBROWN/spine-simple-msa v0.0.0

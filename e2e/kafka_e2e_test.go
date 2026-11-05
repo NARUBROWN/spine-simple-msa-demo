@@ -111,9 +111,20 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var pathError struct {
+		Message string `json:"message"`
+		In      string `json:"in"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&pathError); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
 	response.Body.Close()
 	if response.StatusCode != http.StatusBadRequest {
 		t.Fatalf("invalid path order ID: status=%d", response.StatusCode)
+	}
+	if pathError.Message != "invalid path field order_id" || pathError.In != "path" {
+		t.Fatalf("unexpected path error: %+v", pathError)
 	}
 
 	// DTO 규칙 위반은 서비스가 주문을 기록하거나 이벤트를 만들기 전에 거부합니다.

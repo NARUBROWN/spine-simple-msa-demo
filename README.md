@@ -1,6 +1,6 @@
 # Spine 주문·재고 MSA 예제
 
-HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.7.0-preview.1`, CLI `v0.4.3-preview.2`, Echo, Kafka, playground 플랫폼 `v0.2.0-preview.1`을 사용합니다.
+HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.7.0-preview.2`, CLI Preview, Echo, Kafka, playground 플랫폼 `v0.2.0-preview.1`을 사용합니다.
 
 HTTP와 메시지 소비를 따로 구현하면 JSON 해석, 입력 검증, 의존성 구성, 오류 처리와 종료 흐름을 각 진입점에서 반복하기 쉽습니다. 이 예제는 **핸들러의 타입과 등록으로 실행 흐름을 구성하고, 업무 규칙과 전송 구현을 분리하는 Spine의 방식**을 보여줍니다.
 
@@ -57,14 +57,15 @@ HTTP 핸들러는 `context.Context`와 본문용 `*dto.CreateOrderRequest` 또�
 playground 검증기를 선택했으므로 Go `1.26.0` 이상이 필요합니다. Docker는 아래 격리 브로커와 E2E에 사용합니다.
 
 ```sh
-go install github.com/NARUBROWN/spine-cli@v0.4.3-preview.2
-spine-cli version
-# spine-cli 0.4.3-preview.2
+go install github.com/NARUBROWN/spine-cli/cmd/spine@preview
+spine version
 # 워크스페이스의 각 모듈 의존성을 받습니다.
 go mod download
 go -C order-app mod download
 go -C stock-app mod download
 ```
+
+`@preview`는 설치 시점의 CLI Preview 브랜치를 사용합니다. CI 검증 버전은 `.github/example-channels.json`에 고정합니다.
 
 Kafka나 Redpanda가 이미 있다면 그 주소를 사용합니다. 이 저장소의 개발용 Redpanda는 다음 명령으로 시작할 수 있습니다.
 
@@ -82,13 +83,13 @@ export SPINE_DEMO_TOPIC_PREFIX=my-demo.
 터미널 1에서 재고 워커를 실행합니다.
 
 ```sh
-spine-cli dev --root ./stock-app
+spine dev --root ./stock-app
 ```
 
 터미널 2에서 주문 서버를 실행합니다.
 
 ```sh
-spine-cli dev --root ./order-app
+spine dev --root ./order-app
 ```
 
 코드가 바뀌면 CLI가 다시 빌드하고 빌드 성공 후 프로세스를 교체합니다. Order Service는 consumer startup readiness를 통과한 뒤 기본 `:8080` HTTP 리스너를 엽니다. consumer group의 실제 partition 할당과 결과 처리는 별도로 이어지므로 첫 주문의 완료 상태까지 확인하십시오.
@@ -212,17 +213,17 @@ SPINE_DEMO_KAFKA_BROKER=localhost:19092 \
 각 서비스는 독립 Go 모듈과 CLI 프로젝트입니다. 루트 모듈은 공유 이벤트·outbox·E2E를 담고 `go.work`가 세 모듈을 연결합니다. CLI 정적 모듈 검사는 활성 workspace를 지원하지 않으므로 `GOWORK=off`와 서비스의 공유 모듈 `replace`를 사용합니다.
 
 ```sh
-GOWORK=off spine-cli context --root ./order-app --json
-GOWORK=off spine-cli contract check --root ./order-app --warnings-as-errors --json
-GOWORK=off spine-cli verify --root ./order-app --warnings-as-errors --json
-GOWORK=off spine-cli build --root ./order-app
-GOWORK=off spine-cli contract probe --root ./order-app --json
+GOWORK=off spine context --root ./order-app --json
+GOWORK=off spine contract check --root ./order-app --warnings-as-errors --json
+GOWORK=off spine verify --root ./order-app --warnings-as-errors --json
+GOWORK=off spine build --root ./order-app
+GOWORK=off spine contract probe --root ./order-app --json
 
-GOWORK=off spine-cli context --root ./stock-app --json
-GOWORK=off spine-cli contract check --root ./stock-app --warnings-as-errors --json
-GOWORK=off spine-cli verify --root ./stock-app --warnings-as-errors --json
-GOWORK=off spine-cli build --root ./stock-app
-GOWORK=off spine-cli contract probe --root ./stock-app --json
+GOWORK=off spine context --root ./stock-app --json
+GOWORK=off spine contract check --root ./stock-app --warnings-as-errors --json
+GOWORK=off spine verify --root ./stock-app --warnings-as-errors --json
+GOWORK=off spine build --root ./stock-app
+GOWORK=off spine contract probe --root ./stock-app --json
 
 ./scripts/check.sh
 ```
@@ -246,14 +247,14 @@ SPINE_DEMO_KAFKA_PORT=29092 ./scripts/e2e.sh
 같은 플랫폼 선택으로 새 앱을 시작하는 명령은 다음과 같습니다.
 
 ```sh
-spine-cli new order-api --module example.com/order-api --event-platform kafka --validator playground
-spine-cli new stock-worker --module example.com/stock-worker --platform none --event-platform kafka --validator playground
+spine new order-api --module example.com/order-api --event-platform kafka --validator playground
+spine new stock-worker --module example.com/stock-worker --platform none --event-platform kafka --validator playground
 ```
 
 생성기는 플랫폼·검증기 조립을 만들며 주문·재고 업무 규칙과 내구성 정책은 직접 구현합니다. 추가 consumer는 다음과 같이 계획을 검토합니다.
 
 ```sh
-GOWORK=off spine-cli g consumer restock --root ./stock-app --topic stock.restock --field quantity:int --dry-run --json
+GOWORK=off spine g consumer restock --root ./stock-app --topic stock.restock --field quantity:int --dry-run --json
 ```
 
-`changes`, `diff`, `base_hash`를 확인하고 `--dry-run`을 `--if-match <base_hash>`로 바꿔 적용합니다. 의존성만 갱신하는 `spine-cli update`는 현재의 workspace와 로컬 replace 프로젝트를 지원하지 않으므로 이 저장소에 바로 적용하지 않습니다. [공식 CLI 문서](https://github.com/NARUBROWN/spine-cli#readme)에서 선택한 레시피와 한계를 확인하고 모듈 변경, 소스 변경과 브로커 E2E를 각각 검증하십시오.
+`changes`, `diff`, `base_hash`를 확인하고 `--dry-run`을 `--if-match <base_hash>`로 바꿔 적용합니다. 의존성만 갱신하는 `spine update`는 현재의 workspace와 로컬 replace 프로젝트를 지원하지 않으므로 이 저장소에 바로 적용하지 않습니다. [공식 CLI 문서](https://github.com/NARUBROWN/spine-cli#readme)에서 선택한 레시피와 한계를 확인하고 모듈 변경, 소스 변경과 브로커 E2E를 각각 검증하십시오.
