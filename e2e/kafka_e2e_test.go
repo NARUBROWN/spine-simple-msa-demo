@@ -106,6 +106,27 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	waitForHTTP(t, baseURL+"/orders/999/status", 15*time.Second)
 
+	// 경로 DTO는 숫자가 아닌 주문 ID를 핸들러 실행 전에 거부합니다.
+	response, err := http.Get(baseURL + "/orders/not-a-number/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pathError struct {
+		Message string `json:"message"`
+		In      string `json:"in"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&pathError); err != nil {
+		response.Body.Close()
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid path order ID: status=%d", response.StatusCode)
+	}
+	if pathError.Message != "invalid path field order_id" || pathError.In != "path" {
+		t.Fatalf("unexpected path error: %+v", pathError)
+	}
+
 	// DTO 규칙 위반은 서비스가 주문을 기록하거나 이벤트를 만들기 전에 거부합니다.
 	for _, body := range []string{`{"order_id":105,"quantity":0}`, `{"order_id":105,"quantity":-1}`, `{"order_id":0,"quantity":1}`, `{"order_id":105,"quantity":"bad"}`, `{`} {
 		response, err := http.Post(baseURL+"/orders", "application/json", strings.NewReader(body))
@@ -117,7 +138,7 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 			t.Fatalf("invalid body %s: status=%d", body, response.StatusCode)
 		}
 	}
-	response, err := http.Get(baseURL + "/orders/105/status")
+	response, err = http.Get(baseURL + "/orders/105/status")
 	if err != nil {
 		t.Fatal(err)
 	}
