@@ -10,7 +10,6 @@ import (
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 	"github.com/NARUBROWN/spine/pkg/httperr"
 	"github.com/NARUBROWN/spine/pkg/httpx"
-	"github.com/NARUBROWN/spine/pkg/path"
 )
 
 const (
@@ -32,24 +31,24 @@ func NewOrderController(orders *service.OrderService) *OrderController {
 	return &OrderController{orders: orders}
 }
 
-func (c *OrderController) Create(ctx context.Context, orderID path.Int) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.Value, defaultQuantity, events.ScenarioNormal, 0)
+func (c *OrderController) Create(ctx context.Context, orderID *dto.OrderPath) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx, orderID.OrderID, defaultQuantity, events.ScenarioNormal, 0)
 }
 
-func (c *OrderController) CreateLarge(ctx context.Context, orderID path.Int) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.Value, largeQuantity, events.ScenarioNormal, 0)
+func (c *OrderController) CreateLarge(ctx context.Context, orderID *dto.OrderPath) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx, orderID.OrderID, largeQuantity, events.ScenarioNormal, 0)
 }
 
-func (c *OrderController) CreateTransient(ctx context.Context, orderID path.Int) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.Value, defaultQuantity, events.ScenarioTransient, 1)
+func (c *OrderController) CreateTransient(ctx context.Context, orderID *dto.OrderPath) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx, orderID.OrderID, defaultQuantity, events.ScenarioTransient, 1)
 }
 
-func (c *OrderController) CreatePoison(ctx context.Context, orderID path.Int) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.Value, defaultQuantity, events.ScenarioPoison, 0)
+func (c *OrderController) CreatePoison(ctx context.Context, orderID *dto.OrderPath) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx, orderID.OrderID, defaultQuantity, events.ScenarioPoison, 0)
 }
 
-func (c *OrderController) Status(_ context.Context, orderID path.Int) (httpx.Response[service.OrderStatus], error) {
-	status, ok := c.orders.Status(orderID.Value)
+func (c *OrderController) Status(_ context.Context, orderID *dto.OrderPath) (httpx.Response[service.OrderStatus], error) {
+	status, ok := c.orders.Status(orderID.OrderID)
 	if !ok {
 		return httpx.Response[service.OrderStatus]{}, httperr.NotFound("order status not found")
 	}

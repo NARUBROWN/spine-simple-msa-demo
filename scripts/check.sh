@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repository_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-spine_cli="${SPINE_CLI_BIN:-spine}"
+spine_cli="${SPINE_CLI_BIN:-spine-cli}"
 cd "${repository_dir}"
 
 for project in order-app stock-app; do
