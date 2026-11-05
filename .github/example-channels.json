@@ -1,0 +1,9 @@
+{
+  "schema_version": "spine.example-channels/v1",
+  "cli_version": "v0.4.2",
+  "modules": [
+    "order-app",
+    "stock-app"
+  ],
+  "application_ci": true
+}
