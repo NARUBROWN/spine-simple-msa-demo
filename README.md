@@ -4,6 +4,16 @@ HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아�
 
 HTTP와 메시지 소비를 따로 구현하면 JSON 해석, 입력 검증, 의존성 구성, 오류 처리와 종료 흐름을 각 진입점에서 반복하기 쉽습니다. 이 예제는 **핸들러의 타입과 등록으로 실행 흐름을 구성하고, 업무 규칙과 전송 구현을 분리하는 Spine의 방식**을 보여줍니다.
 
+## 예제 채널 선택
+
+| 채널 | 브랜치 | 용도 |
+| --- | --- | --- |
+| Preview | [`preview`](https://github.com/NARUBROWN/spine-simple-msa-demo/tree/preview) | 개발 중인 변경과 실험 버전을 확인합니다. |
+| RC | [`rc`](https://github.com/NARUBROWN/spine-simple-msa-demo/tree/rc) | 정식 공개 전 릴리스 후보를 확인합니다. |
+| Stable | [`main`](https://github.com/NARUBROWN/spine-simple-msa-demo/tree/main) | 정식 의존성을 사용하는 공개 예제이며 기본 브랜치입니다. |
+
+예제 코드는 `preview → rc → main` 순서로 승격합니다. 예제 태그는 `vX.Y.Z-preview.N`, `vX.Y.Z-rc.N`, `vX.Y.Z`로 구분하며, **GitHub Release는 Stable에서만 발행합니다.** 실제 Spine 버전은 선택한 브랜치의 `go.mod`를 확인하세요. [채널 검사와 발행 절차](RELEASE_CHANNELS.md)를 참고하세요.
+
 ## 코드에서 볼 부분
 
 ```text
