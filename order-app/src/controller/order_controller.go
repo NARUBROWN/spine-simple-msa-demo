@@ -8,6 +8,7 @@ import (
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/dto"
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
+	"github.com/NARUBROWN/spine/pkg/api"
 	"github.com/NARUBROWN/spine/pkg/httperr"
 	"github.com/NARUBROWN/spine/pkg/httpx"
 	"github.com/NARUBROWN/spine/pkg/input"
@@ -29,32 +30,8 @@ type OrderController struct {
 	orders *service.OrderService
 }
 
-func NewOrderController(orders *service.OrderService) *OrderController {
+func (*OrderController) Constructor(orders *service.OrderService) *OrderController {
 	return &OrderController{orders: orders}
-}
-
-func (c *OrderController) Create(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioNormal, 0)
-}
-
-func (c *OrderController) CreateLarge(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, largeQuantity, events.ScenarioNormal, 0)
-}
-
-func (c *OrderController) CreateTransient(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioTransient, 1)
-}
-
-func (c *OrderController) CreatePoison(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioPoison, 0)
-}
-
-func (c *OrderController) Status(_ spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[service.OrderStatus], error) {
-	status, ok := c.orders.Status(orderID.OrderID)
-	if !ok {
-		return httpx.Response[service.OrderStatus]{}, httperr.NotFound("order status not found")
-	}
-	return httpx.Response[service.OrderStatus]{Body: status}, nil
 }
 
 func (c *OrderController) publish(ctx context.Context, orderID int64, quantity int, scenario string, failuresBeforeSuccess int) (httpx.Response[OrderAccepted], error) {
@@ -74,7 +51,30 @@ func (c *OrderController) publish(ctx context.Context, orderID int64, quantity i
 	}, nil
 }
 
-// Submit의 JSON 바인딩과 validate 태그 검사는 Spine이 핸들러 호출 전에 수행합니다.
-func (c *OrderController) Submit(ctx spinectx.Ctx, request input.Body[dto.CreateOrderRequest]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx.ExecutionContext().Context(), request.OrderID, request.Quantity, events.ScenarioNormal, 0)
+// RegisterRoutes는 경로와 요청 처리 콜백을 함께 선언합니다.
+func (c *OrderController) RegisterRoutes(r *api.Registry) {
+	orders := r.Group("/orders", api.Tags("Orders"))
+	orders.POST("/", func(ctx spinectx.Ctx, request input.Body[dto.CreateOrderRequest]) (httpx.Response[OrderAccepted], error) {
+		return c.publish(ctx.ExecutionContext().Context(), request.OrderID, request.Quantity, events.ScenarioNormal, 0)
+	})
+	orders.GET("/:order_id/status", func(_ spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[service.OrderStatus], error) {
+		status, ok := c.orders.Status(orderID.OrderID)
+		if !ok {
+			return httpx.Response[service.OrderStatus]{}, httperr.NotFound("order status not found")
+		}
+		return httpx.Response[service.OrderStatus]{Body: status}, nil
+	})
+	orders.POST("/:order_id/large", func(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+		return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, largeQuantity, events.ScenarioNormal, 0)
+	})
+	orders.POST("/:order_id", func(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+		return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioNormal, 0)
+	})
+	scenarios := r.Group("/scenarios", api.Tags("Scenarios"))
+	scenarios.POST("/poison/:order_id", func(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+		return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioPoison, 0)
+	})
+	scenarios.POST("/transient/:order_id", func(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+		return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioTransient, 1)
+	})
 }

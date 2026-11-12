@@ -24,7 +24,7 @@ func TestOrderConsumerRetriesThenDeduplicates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
+	consumer := (&OrderConsumer{}).Constructor((&service.ReservationService{}).Constructor(idempotencyStore))
 	bus := &recordingBus{}
 	ctx := publish.WithPublisher(context.Background(), bus)
 	event := events.NewOrderCreated(10, 1, events.ScenarioTransient, 1)
@@ -51,7 +51,7 @@ func TestOrderConsumerRejectsPoisonEvent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
+	consumer := (&OrderConsumer{}).Constructor((&service.ReservationService{}).Constructor(idempotencyStore))
 	event := events.NewOrderCreated(11, 1, events.ScenarioPoison, 0)
 	if err := consumer.OnCreated(handlerContext(context.Background()), event.Name(), event); err == nil {
 		t.Fatal("poison event must fail without being acknowledged")
@@ -66,7 +66,7 @@ func TestOrderConsumerPublishesRejection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
+	consumer := (&OrderConsumer{}).Constructor((&service.ReservationService{}).Constructor(idempotencyStore))
 	bus := &recordingBus{}
 	ctx := publish.WithPublisher(context.Background(), bus)
 	event := events.NewOrderCreated(12, 1000, events.ScenarioNormal, 0)

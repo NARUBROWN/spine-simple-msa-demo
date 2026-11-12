@@ -9,7 +9,7 @@ import (
 // OrderConsumer는 구독과 DTO 바인딩을 재고 예약 서비스에 연결합니다.
 type OrderConsumer struct{ reservations *service.ReservationService }
 
-func NewOrderConsumer(reservations *service.ReservationService) *OrderConsumer {
+func (*OrderConsumer) Constructor(reservations *service.ReservationService) *OrderConsumer {
 	return &OrderConsumer{reservations: reservations}
 }
 func (c *OrderConsumer) OnCreated(ctx spinectx.Ctx, eventName string, event events.OrderCreated) error {
