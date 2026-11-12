@@ -38,7 +38,7 @@ POST /orders {order_id, quantity}
 | HTTP, Kafka, 검증기 선택, 생성자와 실행 정책 연결 | [주문 BuildApplication](order-app/internal/application/application.go), [재고 BuildApplication](stock-app/internal/application/application.go) |
 | JSON DTO와 경로 DTO를 받아 응답 상태와 오류로 변환 | [OrderController](order-app/src/controller/order_controller.go) |
 | 주문 접수, 충돌 확인과 도메인 이벤트 기록 | [OrderService](order-app/src/service/order_service.go) |
-| 논리 구독 이름과 핸들러 연결 | [주문 결과 구독](order-app/src/consumer/stock/module.go), [주문 생성 구독](stock-app/src/consumer/order/module.go) |
+| 논리 구독 이름과 핸들러 연결 | [주문 결과 구독](order-app/src/consumer/stock/stock_handler.go), [주문 생성 구독](stock-app/src/consumer/order/order_handler.go) |
 | 재고 결정, 처리 시도 기록과 중복 결정 재사용 | [ReservationService](stock-app/src/service/reservation_service.go) |
 | 결과 중복 제거와 주문 상태 전이 | [OrderTrackerService](order-app/src/service/order_tracker_service.go) |
 | 프로세스 재시작 후 재고 결정 복구 | [IdempotencyStore](stock-app/internal/store/idempotency_store.go) |
@@ -46,7 +46,7 @@ POST /orders {order_id, quantity}
 
 HTTP 핸들러는 `spine.Ctx`와 본문용 `input.Body[dto.CreateOrderRequest]` 또는 경로용 `input.Path[dto.OrderPath]`를 받습니다. `OrderPath`의 `path:"order_id"`는 라우트 이름과 연결됩니다. consumer는 `spine.Ctx`, 이벤트 이름과 이벤트 DTO를 받습니다. 서비스에는 `ctx.ExecutionContext().Context()`로 꺼낸 표준 컨텍스트를 전달합니다. Spine이 입력을 해석하고 선택된 검증기를 호출한 뒤 DI로 만든 핸들러를 실행합니다. 서비스에는 HTTP request나 Kafka reader/writer가 없습니다.
 
-HTTP 경로와 인라인 처리 콜백은 `OrderController.RegisterRoutes`에 모으며 `/orders`와 `/scenarios` 그룹을 사용합니다. 별도 `src/route`와 `app.Route`는 사용하지 않습니다. 이벤트 구독은 각 수신 패키지의 `module.go`로 분리하고, 앱 조립부에서 해당 등록 함수를 호출합니다.
+HTTP 경로와 인라인 처리 콜백은 `OrderController.RegisterRoutes`에 모으며 `/orders`와 `/scenarios` 그룹을 사용합니다. 별도 `src/route`와 `app.Route`는 사용하지 않습니다. 이벤트 구독 등록 함수와 수신 메서드는 각 Consumer의 핸들러 파일에 함께 두고, 앱 조립부에서 해당 등록 함수를 호출합니다.
 
 ```go
 app.Constructor(
@@ -60,7 +60,7 @@ if err := stockconsumer.Register(app); err != nil {
 }
 ```
 
-생성자는 `BuildApplication`에서 등록하고, `order-app/src/consumer/stock/module.go`는 토픽과 수신 메서드만 연결합니다.
+생성자는 `BuildApplication`에서 등록하고, `order-app/src/consumer/stock/stock_handler.go`의 `Register`는 토픽과 같은 파일의 수신 메서드를 연결합니다.
 
 ```go
 func Register(app spine.App) error {
