@@ -29,13 +29,13 @@ func TestOrderConsumerRetriesThenDeduplicates(t *testing.T) {
 	ctx := publish.WithPublisher(context.Background(), bus)
 	event := events.NewOrderCreated(10, 1, events.ScenarioTransient, 1)
 
-	if err := consumer.OnCreated(ctx, event.Name(), event); err == nil {
+	if err := consumer.OnCreated(handlerContext(ctx), event.Name(), event); err == nil {
 		t.Fatal("first transient attempt must fail")
 	}
-	if err := consumer.OnCreated(ctx, event.Name(), event); err != nil {
+	if err := consumer.OnCreated(handlerContext(ctx), event.Name(), event); err != nil {
 		t.Fatalf("second transient attempt failed: %v", err)
 	}
-	if err := consumer.OnCreated(ctx, event.Name(), event); err != nil {
+	if err := consumer.OnCreated(handlerContext(ctx), event.Name(), event); err != nil {
 		t.Fatalf("duplicate delivery failed: %v", err)
 	}
 	if len(bus.events) != 2 {
@@ -53,7 +53,7 @@ func TestOrderConsumerRejectsPoisonEvent(t *testing.T) {
 	}
 	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
 	event := events.NewOrderCreated(11, 1, events.ScenarioPoison, 0)
-	if err := consumer.OnCreated(context.Background(), event.Name(), event); err == nil {
+	if err := consumer.OnCreated(handlerContext(context.Background()), event.Name(), event); err == nil {
 		t.Fatal("poison event must fail without being acknowledged")
 	}
 	if _, ok := idempotencyStore.Decision(event.EventID); ok {
@@ -70,7 +70,7 @@ func TestOrderConsumerPublishesRejection(t *testing.T) {
 	bus := &recordingBus{}
 	ctx := publish.WithPublisher(context.Background(), bus)
 	event := events.NewOrderCreated(12, 1000, events.ScenarioNormal, 0)
-	if err := consumer.OnCreated(ctx, event.Name(), event); err != nil {
+	if err := consumer.OnCreated(handlerContext(ctx), event.Name(), event); err != nil {
 		t.Fatal(err)
 	}
 	if len(bus.events) != 1 {

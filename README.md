@@ -44,7 +44,7 @@ POST /orders {order_id, quantity}
 | 프로세스 재시작 후 재고 결정 복구 | [IdempotencyStore](stock-app/internal/store/idempotency_store.go) |
 | 공유 이벤트 형식과 검증 태그 | [shared/events](shared/events) |
 
-HTTP 핸들러는 `context.Context`와 본문용 `*dto.CreateOrderRequest` 또는 경로용 `*dto.OrderPath`를 받습니다. `OrderPath`의 `path:"order_id"`는 라우트 이름과 연결됩니다. consumer는 `context.Context`, 이벤트 이름과 `events.OrderCreated`를 받습니다. Spine이 입력을 해석하고 선택된 검증기를 호출한 뒤 DI로 만든 핸들러를 실행합니다. 서비스에는 HTTP request나 Kafka reader/writer가 없습니다.
+HTTP 핸들러는 `spine.Ctx`와 본문용 `input.Body[dto.CreateOrderRequest]` 또는 경로용 `input.Path[dto.OrderPath]`를 받습니다. `OrderPath`의 `path:"order_id"`는 라우트 이름과 연결됩니다. consumer는 `spine.Ctx`, 이벤트 이름과 이벤트 DTO를 받습니다. 서비스에는 `ctx.ExecutionContext().Context()`로 꺼낸 표준 컨텍스트를 전달합니다. Spine이 입력을 해석하고 선택된 검증기를 호출한 뒤 DI로 만든 핸들러를 실행합니다. 서비스에는 HTTP request나 Kafka reader/writer가 없습니다.
 
 숫자가 아닌 주문 ID는 HTTP 400과 `{"message":"invalid path field order_id","in":"path"}`를 반환합니다. v0.6.5 예제도 HTTP 400을 반환했지만 오류 메시지가 다르고 `in` 필드는 없었습니다.
 

@@ -11,6 +11,7 @@ import (
 	"github.com/NARUBROWN/spine/pkg/httperr"
 	"github.com/NARUBROWN/spine/pkg/httpx"
 	"github.com/NARUBROWN/spine/pkg/input"
+	spinectx "github.com/NARUBROWN/spine/pkg/spine"
 )
 
 const (
@@ -32,23 +33,23 @@ func NewOrderController(orders *service.OrderService) *OrderController {
 	return &OrderController{orders: orders}
 }
 
-func (c *OrderController) Create(ctx context.Context, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.OrderID, defaultQuantity, events.ScenarioNormal, 0)
+func (c *OrderController) Create(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioNormal, 0)
 }
 
-func (c *OrderController) CreateLarge(ctx context.Context, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.OrderID, largeQuantity, events.ScenarioNormal, 0)
+func (c *OrderController) CreateLarge(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, largeQuantity, events.ScenarioNormal, 0)
 }
 
-func (c *OrderController) CreateTransient(ctx context.Context, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.OrderID, defaultQuantity, events.ScenarioTransient, 1)
+func (c *OrderController) CreateTransient(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioTransient, 1)
 }
 
-func (c *OrderController) CreatePoison(ctx context.Context, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, orderID.OrderID, defaultQuantity, events.ScenarioPoison, 0)
+func (c *OrderController) CreatePoison(ctx spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx.ExecutionContext().Context(), orderID.OrderID, defaultQuantity, events.ScenarioPoison, 0)
 }
 
-func (c *OrderController) Status(_ context.Context, orderID input.Path[dto.OrderPath]) (httpx.Response[service.OrderStatus], error) {
+func (c *OrderController) Status(_ spinectx.Ctx, orderID input.Path[dto.OrderPath]) (httpx.Response[service.OrderStatus], error) {
 	status, ok := c.orders.Status(orderID.OrderID)
 	if !ok {
 		return httpx.Response[service.OrderStatus]{}, httperr.NotFound("order status not found")
@@ -74,6 +75,6 @@ func (c *OrderController) publish(ctx context.Context, orderID int64, quantity i
 }
 
 // Submit의 JSON 바인딩과 validate 태그 검사는 Spine이 핸들러 호출 전에 수행합니다.
-func (c *OrderController) Submit(ctx context.Context, request input.Body[dto.CreateOrderRequest]) (httpx.Response[OrderAccepted], error) {
-	return c.publish(ctx, request.OrderID, request.Quantity, events.ScenarioNormal, 0)
+func (c *OrderController) Submit(ctx spinectx.Ctx, request input.Body[dto.CreateOrderRequest]) (httpx.Response[OrderAccepted], error) {
+	return c.publish(ctx.ExecutionContext().Context(), request.OrderID, request.Quantity, events.ScenarioNormal, 0)
 }
