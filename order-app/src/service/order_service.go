@@ -13,7 +13,7 @@ var ErrOrderConflict = errors.New("order_id already belongs to a different reque
 
 type OrderService struct{ tracker *OrderTrackerService }
 
-func NewOrderService(tracker *OrderTrackerService) *OrderService {
+func (*OrderService) Constructor(tracker *OrderTrackerService) *OrderService {
 	return &OrderService{tracker: tracker}
 }
 

@@ -33,7 +33,7 @@ func TestMalformedOrderDoesNotCreateDecisionOrPublish(t *testing.T) {
 			mutate(&event)
 			bus := &recordingBus{}
 			ctx := publish.WithPublisher(context.Background(), bus)
-			if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(handlerContext(ctx), event.Name(), event); err == nil {
+			if err := (&OrderConsumer{}).Constructor((&service.ReservationService{}).Constructor(state)).OnCreated(handlerContext(ctx), event.Name(), event); err == nil {
 				t.Fatal("invalid event must be rejected")
 			}
 			if _, exists := state.Decision(event.EventID); exists || len(bus.events) != 0 {
@@ -54,7 +54,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 	}
 	event := events.NewOrderCreated(42, 1, events.ScenarioNormal, 0)
 	first := &recordingBus{}
-	if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(handlerContext(publish.WithPublisher(context.Background(), first)), event.Name(), event); err != nil {
+	if err := (&OrderConsumer{}).Constructor((&service.ReservationService{}).Constructor(state)).OnCreated(handlerContext(publish.WithPublisher(context.Background(), first)), event.Name(), event); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := store.NewIdempotencyStore(path)
@@ -62,7 +62,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 		t.Fatal(err)
 	}
 	replay := &recordingBus{}
-	consumer := NewOrderConsumer(service.NewReservationService(reopened))
+	consumer := (&OrderConsumer{}).Constructor((&service.ReservationService{}).Constructor(reopened))
 	ctx := publish.WithPublisher(context.Background(), replay)
 	if err := consumer.OnCreated(handlerContext(ctx), event.Name(), event); err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestConcurrentConflictingDeliveriesPublishOnlyStoredDecision(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	consumer := NewOrderConsumer(service.NewReservationService(state))
+	consumer := (&OrderConsumer{}).Constructor((&service.ReservationService{}).Constructor(state))
 	event := events.NewOrderCreated(42, 1, events.ScenarioNormal, 0)
 	type result struct {
 		quantity int

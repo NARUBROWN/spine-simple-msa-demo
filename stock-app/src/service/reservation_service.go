@@ -18,7 +18,7 @@ type ReservationService struct {
 	store *store.IdempotencyStore
 }
 
-func NewReservationService(idempotencyStore *store.IdempotencyStore) *ReservationService {
+func (*ReservationService) Constructor(idempotencyStore *store.IdempotencyStore) *ReservationService {
 	return &ReservationService{store: idempotencyStore}
 }
 
