@@ -3,10 +3,10 @@ module github.com/NARUBROWN/spine-simple-msa/stock-app
 go 1.26.0
 
 require (
-	github.com/NARUBROWN/spine v0.6.5
-	github.com/NARUBROWN/spine-kafka-platform v0.1.0
+	github.com/NARUBROWN/spine v0.7.5
+	github.com/NARUBROWN/spine-kafka-platform v0.2.0
 	github.com/NARUBROWN/spine-simple-msa v0.0.0
-	github.com/NARUBROWN/spine-validator-playground v0.1.0
+	github.com/NARUBROWN/spine-validator-playground v0.2.0
 )
 
 require (

@@ -1,9 +1,9 @@
-github.com/NARUBROWN/spine v0.6.5 h1:m1cm/Ba03GKSd0xbv+d6hkjgPKLOpsQLa2mp15BEY1U=
-github.com/NARUBROWN/spine v0.6.5/go.mod h1:A0JJcUelvcyn3DW+VkSTHJfvKBegrMNKfXCq8tbiXJ4=
-github.com/NARUBROWN/spine-kafka-platform v0.1.0 h1:ToEhDaWMjQ0NXb58vtUdiM5MG5H8FtBAsUlz3ZHQx3w=
-github.com/NARUBROWN/spine-kafka-platform v0.1.0/go.mod h1:Sirn95NpgO5razjjaiFzJSCA3bzwb6J+aO6yEcOJbEM=
-github.com/NARUBROWN/spine-validator-playground v0.1.0 h1:exADuXEXevFqgtxeAja6d6d/rQzhNH4DhB6RvF7bLTQ=
-github.com/NARUBROWN/spine-validator-playground v0.1.0/go.mod h1:bF+nesRo7909jLnehLqoviaOnNcpOAXBiU4dXiehx5g=
+github.com/NARUBROWN/spine v0.7.5 h1:/zIEVanDiU5aBf+7378l6sE/9KxROibcTLRm3M+r7Mg=
+github.com/NARUBROWN/spine v0.7.5/go.mod h1:ieBb5zN8fi7NastxyIyNGKHVanRa15XQ8CROJdciXPE=
+github.com/NARUBROWN/spine-kafka-platform v0.2.0 h1:/LuuQ17Xpa0l3HHDhNn5dA0DFb3ijDoIRNTqr0wjKt8=
+github.com/NARUBROWN/spine-kafka-platform v0.2.0/go.mod h1:VjP82f3XdQ4M5mZtZj36rIKWEv23mDixImjuxW6CdjQ=
+github.com/NARUBROWN/spine-validator-playground v0.2.0 h1:leOYuucdpn8U9kzwVCwitwGAAVMG9bsDwaqREaVkOOo=
+github.com/NARUBROWN/spine-validator-playground v0.2.0/go.mod h1:yYY/fxm6/q/XKcK9JVpujNm2nCv3hWKLpPAB0vF/I7g=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gabriel-vasile/mimetype v1.4.16 h1:5izNFuvA37st1dDRAcA7TtmngBmRgiIPDmTtiEvjx1E=
