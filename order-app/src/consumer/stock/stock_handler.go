@@ -3,6 +3,7 @@ package stock
 import (
 	"log"
 
+	"github.com/NARUBROWN/spine"
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 	spinectx "github.com/NARUBROWN/spine/pkg/spine"
@@ -37,4 +38,12 @@ func (c *StockConsumer) OnRejected(_ spinectx.Ctx, eventName string, event event
 	})
 	log.Printf("Stock result received: event=%s event_id=%s order_id=%d status=rejected duplicate=%t", eventName, event.EventID, event.OrderID, !updated)
 	return nil
+}
+
+// Register는 재고 결과 토픽과 수신 메서드를 연결합니다.
+func Register(app spine.App) error {
+	if err := app.Consumers().Register("stock.reserved", (*StockConsumer).OnReserved); err != nil {
+		return err
+	}
+	return app.Consumers().Register("stock.rejected", (*StockConsumer).OnRejected)
 }
