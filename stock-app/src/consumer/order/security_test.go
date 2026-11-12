@@ -33,7 +33,7 @@ func TestMalformedOrderDoesNotCreateDecisionOrPublish(t *testing.T) {
 			mutate(&event)
 			bus := &recordingBus{}
 			ctx := publish.WithPublisher(context.Background(), bus)
-			if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(ctx, event.Name(), event); err == nil {
+			if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(handlerContext(ctx), event.Name(), event); err == nil {
 				t.Fatal("invalid event must be rejected")
 			}
 			if _, exists := state.Decision(event.EventID); exists || len(bus.events) != 0 {
@@ -54,7 +54,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 	}
 	event := events.NewOrderCreated(42, 1, events.ScenarioNormal, 0)
 	first := &recordingBus{}
-	if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(publish.WithPublisher(context.Background(), first), event.Name(), event); err != nil {
+	if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(handlerContext(publish.WithPublisher(context.Background(), first)), event.Name(), event); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := store.NewIdempotencyStore(path)
@@ -64,7 +64,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 	replay := &recordingBus{}
 	consumer := NewOrderConsumer(service.NewReservationService(reopened))
 	ctx := publish.WithPublisher(context.Background(), replay)
-	if err := consumer.OnCreated(ctx, event.Name(), event); err != nil {
+	if err := consumer.OnCreated(handlerContext(ctx), event.Name(), event); err != nil {
 		t.Fatal(err)
 	}
 	if len(first.events) != 1 || len(replay.events) != 1 || !reflect.DeepEqual(first.events[0], replay.events[0]) {
@@ -76,7 +76,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 	} {
 		conflict := event
 		mutate(&conflict)
-		if err := consumer.OnCreated(ctx, conflict.Name(), conflict); err == nil {
+		if err := consumer.OnCreated(handlerContext(ctx), conflict.Name(), conflict); err == nil {
 			t.Fatal("same event ID with a different order or quantity must fail")
 		}
 	}
@@ -110,7 +110,7 @@ func TestConcurrentConflictingDeliveriesPublishOnlyStoredDecision(t *testing.T) 
 			defer wg.Done()
 			bus := &recordingBus{}
 			ctx := publish.WithPublisher(context.Background(), bus)
-			err := consumer.OnCreated(ctx, candidate.Name(), candidate)
+			err := consumer.OnCreated(handlerContext(ctx), candidate.Name(), candidate)
 			results <- result{candidate.Quantity, bus.events, err}
 		}()
 	}
