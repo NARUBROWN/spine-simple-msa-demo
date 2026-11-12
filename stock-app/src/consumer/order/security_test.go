@@ -32,7 +32,7 @@ func TestMalformedOrderDoesNotCreateDecisionOrPublish(t *testing.T) {
 			event := valid
 			mutate(&event)
 			bus := &recordingBus{}
-			ctx := context.WithValue(context.Background(), publish.PublisherKey, bus)
+			ctx := publish.WithPublisher(context.Background(), bus)
 			if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(ctx, event.Name(), event); err == nil {
 				t.Fatal("invalid event must be rejected")
 			}
@@ -54,7 +54,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 	}
 	event := events.NewOrderCreated(42, 1, events.ScenarioNormal, 0)
 	first := &recordingBus{}
-	if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(context.WithValue(context.Background(), publish.PublisherKey, first), event.Name(), event); err != nil {
+	if err := NewOrderConsumer(service.NewReservationService(state)).OnCreated(publish.WithPublisher(context.Background(), first), event.Name(), event); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := store.NewIdempotencyStore(path)
@@ -63,7 +63,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 	}
 	replay := &recordingBus{}
 	consumer := NewOrderConsumer(service.NewReservationService(reopened))
-	ctx := context.WithValue(context.Background(), publish.PublisherKey, replay)
+	ctx := publish.WithPublisher(context.Background(), replay)
 	if err := consumer.OnCreated(ctx, event.Name(), event); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestConcurrentConflictingDeliveriesPublishOnlyStoredDecision(t *testing.T) 
 		go func() {
 			defer wg.Done()
 			bus := &recordingBus{}
-			ctx := context.WithValue(context.Background(), publish.PublisherKey, bus)
+			ctx := publish.WithPublisher(context.Background(), bus)
 			err := consumer.OnCreated(ctx, candidate.Name(), candidate)
 			results <- result{candidate.Quantity, bus.events, err}
 		}()

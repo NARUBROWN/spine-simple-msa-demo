@@ -22,7 +22,7 @@ func (b *recordingBus) Publish(events ...publish.DomainEvent) {
 
 func TestChangedQuantityReturnsConflictWithoutPublishing(t *testing.T) {
 	bus := &recordingBus{}
-	ctx := context.WithValue(context.Background(), publish.PublisherKey, bus)
+	ctx := publish.WithPublisher(context.Background(), bus)
 	controller := NewOrderController(service.NewOrderService(service.NewOrderTrackerService()))
 	id := &dto.OrderPath{OrderID: 101}
 	if _, err := controller.Create(ctx, id); err != nil {

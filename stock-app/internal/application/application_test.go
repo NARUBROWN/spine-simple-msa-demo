@@ -1,6 +1,7 @@
 package application
 
 import (
+	"github.com/NARUBROWN/spine"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,9 +25,13 @@ func TestBuildApplicationDoesNotReadStateOrConnectToBroker(t *testing.T) {
 	if options.HTTP != nil {
 		t.Fatal("재고 워커에 HTTP가 활성화되었습니다")
 	}
-	registrations := app.Consumers().Registrations()
+	description, err := spine.DescribeRegistrations(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registrations := description.Consumers
 	for _, registration := range registrations {
-		if registration.Topic == "order.created" && registration.Meta.Method.Name == "OnCreated" {
+		if registration.Topic == "order.created" && registration.Handler.Method == "OnCreated" {
 			return
 		}
 	}
