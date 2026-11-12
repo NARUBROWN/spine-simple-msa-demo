@@ -10,6 +10,7 @@ import (
 	service "github.com/NARUBROWN/spine-simple-msa/stock-app/src/service"
 	playground "github.com/NARUBROWN/spine-validator-playground"
 	"github.com/NARUBROWN/spine/pkg/boot"
+	"github.com/NARUBROWN/spine/pkg/constructor"
 )
 
 // BuildApplication은 상태 파일을 읽거나 브로커에 연결하지 않고 재고 워커를 구성합니다.
@@ -38,10 +39,15 @@ func BuildApplication() (spine.App, boot.Options, error) {
 		),
 		spine.WithValidator(validator),
 	)
-	app.Constructor(service.NewReservationService)
+	app.Constructor(
+		constructor.Custom(NewStockStore),
+		constructor.Service(&service.ReservationService{}),
+		constructor.Custom(&orderconsumer.OrderConsumer{}),
+	)
 	if err := orderconsumer.Register(app); err != nil {
 		return nil, boot.Options{}, err
 	}
+
 	return app, boot.Options{
 		EnableGracefulShutdown: true,
 		ShutdownTimeout:        10 * time.Second,
