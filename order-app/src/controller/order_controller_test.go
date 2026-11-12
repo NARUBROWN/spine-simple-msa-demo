@@ -25,13 +25,13 @@ func TestChangedQuantityReturnsConflictWithoutPublishing(t *testing.T) {
 	ctx := publish.WithPublisher(context.Background(), bus)
 	controller := NewOrderController(service.NewOrderService(service.NewOrderTrackerService()))
 	id := &dto.OrderPath{OrderID: 101}
-	if _, err := controller.Create(ctx, id); err != nil {
+	if _, err := controller.Create(handlerContext(ctx), id); err != nil {
 		t.Fatal(err)
 	}
 	if len(bus.events) != 1 {
 		t.Fatalf("initial request published %d events", len(bus.events))
 	}
-	_, err := controller.CreateLarge(ctx, id)
+	_, err := controller.CreateLarge(handlerContext(ctx), id)
 	var httpError *httperr.HTTPError
 	if !errors.As(err, &httpError) || httpError.Status != http.StatusConflict {
 		t.Fatalf("conflicting request error = %v, want HTTP 409", err)
