@@ -26,7 +26,7 @@ func TestOrderConsumerRetriesThenDeduplicates(t *testing.T) {
 	}
 	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
 	bus := &recordingBus{}
-	ctx := context.WithValue(context.Background(), publish.PublisherKey, bus)
+	ctx := publish.WithPublisher(context.Background(), bus)
 	event := events.NewOrderCreated(10, 1, events.ScenarioTransient, 1)
 
 	if err := consumer.OnCreated(ctx, event.Name(), event); err == nil {
@@ -68,7 +68,7 @@ func TestOrderConsumerPublishesRejection(t *testing.T) {
 	}
 	consumer := NewOrderConsumer(service.NewReservationService(idempotencyStore))
 	bus := &recordingBus{}
-	ctx := context.WithValue(context.Background(), publish.PublisherKey, bus)
+	ctx := publish.WithPublisher(context.Background(), bus)
 	event := events.NewOrderCreated(12, 1000, events.ScenarioNormal, 0)
 	if err := consumer.OnCreated(ctx, event.Name(), event); err != nil {
 		t.Fatal(err)

@@ -1,6 +1,6 @@
-# Spine 주문·재고 MSA 예제
+# Spine 주문, 재고 MSA 예제
 
-HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.6.5`, CLI `v0.4.2`, Echo·Kafka·playground 플랫폼 `v0.1.0`을 사용합니다.
+HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.7.5`, CLI v0.4.4, Echo `v0.2.1`, Kafka와 playground 플랫폼 `v0.2.0`을 사용합니다.
 
 HTTP와 메시지 소비를 따로 구현하면 JSON 해석, 입력 검증, 의존성 구성, 오류 처리와 종료 흐름을 각 진입점에서 반복하기 쉽습니다. 이 예제는 **핸들러의 타입과 등록으로 실행 흐름을 구성하고, 업무 규칙과 전송 구현을 분리하는 Spine의 방식**을 보여줍니다.
 
@@ -18,7 +18,7 @@ HTTP와 메시지 소비를 따로 구현하면 JSON 해석, 입력 검증, 의�
 
 ```text
 POST /orders {order_id, quantity}
-        │ JSON 바인딩 · DTO 검증 · DI
+        │ JSON 바인딩,  DTO 검증,  DI
         ▼
  OrderController → OrderService → publish.Event(order.created)
                                           │ 후처리에서 Kafka 발행
@@ -35,8 +35,8 @@ POST /orders {order_id, quantity}
 
 | 책임 | 코드 |
 |---|---|
-| HTTP·Kafka·검증기 선택, 생성자와 실행 정책 연결 | [주문 BuildApplication](order-app/internal/application/application.go), [재고 BuildApplication](stock-app/internal/application/application.go) |
-| JSON DTO·경로 인자를 받아 응답 상태와 오류로 변환 | [OrderController](order-app/src/controller/order_controller.go) |
+| HTTP, Kafka, 검증기 선택, 생성자와 실행 정책 연결 | [주문 BuildApplication](order-app/internal/application/application.go), [재고 BuildApplication](stock-app/internal/application/application.go) |
+| JSON DTO와 경로 DTO를 받아 응답 상태와 오류로 변환 | [OrderController](order-app/src/controller/order_controller.go) |
 | 주문 접수, 충돌 확인과 도메인 이벤트 기록 | [OrderService](order-app/src/service/order_service.go) |
 | 논리 구독 이름과 핸들러 연결 | [주문 결과 구독](order-app/src/consumer/stock/module.go), [주문 생성 구독](stock-app/src/consumer/order/module.go) |
 | 재고 결정, 처리 시도 기록과 중복 결정 재사용 | [ReservationService](stock-app/src/service/reservation_service.go) |
@@ -44,25 +44,28 @@ POST /orders {order_id, quantity}
 | 프로세스 재시작 후 재고 결정 복구 | [IdempotencyStore](stock-app/internal/store/idempotency_store.go) |
 | 공유 이벤트 형식과 검증 태그 | [shared/events](shared/events) |
 
-HTTP 핸들러는 `context.Context`와 `*dto.CreateOrderRequest`, consumer는 `context.Context`, 이벤트 이름과 `events.OrderCreated`를 받습니다. Spine이 입력을 해석하고 선택된 검증기를 호출한 뒤 DI로 만든 핸들러를 실행합니다. 서비스에는 HTTP request나 Kafka reader/writer가 없습니다.
+HTTP 핸들러는 `context.Context`와 본문용 `*dto.CreateOrderRequest` 또는 경로용 `*dto.OrderPath`를 받습니다. `OrderPath`의 `path:"order_id"`는 라우트 이름과 연결됩니다. consumer는 `context.Context`, 이벤트 이름과 `events.OrderCreated`를 받습니다. Spine이 입력을 해석하고 선택된 검증기를 호출한 뒤 DI로 만든 핸들러를 실행합니다. 서비스에는 HTTP request나 Kafka reader/writer가 없습니다.
 
-`publish.Event`는 실행 context에 도메인 이벤트를 기록합니다. Spine은 핸들러 후처리에서 발행하고, consumer의 핸들러와 후처리가 성공하면 ACK합니다. 실패하면 NACK합니다. Kafka의 실패 offset 보호와 전송은 Kafka 플랫폼이, reader 재생성과 backoff·종료 순서는 Spine이 담당합니다.
+숫자가 아닌 주문 ID는 HTTP 400과 `{"message":"invalid path field order_id","in":"path"}`를 반환합니다. v0.6.5 예제도 HTTP 400을 반환했지만 오류 메시지가 다르고 `in` 필드는 없었습니다.
 
-주문 앱은 Echo·Kafka·검증기를 선택합니다. 재고 앱은 Kafka·검증기만 선택한 워커이며 HTTP 플랫폼과 리스너를 두지 않습니다. consumer는 `order.created` 같은 **논리 이름**을 등록하고, `TopicPrefix`는 Kafka factory에서 구독과 발행에 한 번만 적용합니다.
+`publish.Event`는 실행 context에 도메인 이벤트를 기록합니다. Spine은 핸들러 후처리에서 발행하고, consumer의 핸들러와 후처리가 성공하면 ACK합니다. 실패하면 NACK합니다. Kafka의 실패 offset 보호와 전송은 Kafka 플랫폼이, reader 재생성과 backoff, 종료 순서는 Spine이 담당합니다.
+
+주문 앱은 Echo, Kafka, 검증기를 선택합니다. 재고 앱은 Kafka, 검증기만 선택한 워커이며 HTTP 플랫폼과 리스너를 두지 않습니다. consumer는 `order.created` 같은 **논리 이름**을 등록하고, `TopicPrefix`는 Kafka factory에서 구독과 발행에 한 번만 적용합니다.
 
 ## 실행하기
 
 playground 검증기를 선택했으므로 Go `1.26.0` 이상이 필요합니다. Docker는 아래 격리 브로커와 E2E에 사용합니다.
 
 ```sh
-go install github.com/NARUBROWN/spine-cli/cmd/spine@v0.4.2
+go install github.com/NARUBROWN/spine-cli/cmd/spine@v0.4.4
 spine version
-# spine-cli 0.4.2
 # 워크스페이스의 각 모듈 의존성을 받습니다.
 go mod download
 go -C order-app mod download
 go -C stock-app mod download
 ```
+
+CLI는 정식 버전 `v0.4.4`를 설치합니다. CI 검증 버전도 `.github/example-channels.json`에 고정합니다.
 
 Kafka나 Redpanda가 이미 있다면 그 주소를 사용합니다. 이 저장소의 개발용 Redpanda는 다음 명령으로 시작할 수 있습니다.
 
@@ -147,7 +150,7 @@ curl -X POST http://localhost:8080/scenarios/transient/103
 curl http://localhost:8080/orders/103/status
 ```
 
-로그에서 `attempt=2`의 성공을 확인할 수 있습니다. `ConsumerRetry`는 연결·읽기·ACK/NACK 실패 뒤 reader를 재생성하는 정책입니다. 핸들러 호출 횟수를 제한하거나 poison message를 건너뛰는 정책이 아닙니다.
+로그에서 `attempt=2`의 성공을 확인할 수 있습니다. `ConsumerRetry`는 연결, 읽기, ACK/NACK 실패 뒤 reader를 재생성하는 정책입니다. 핸들러 호출 횟수를 제한하거나 poison message를 건너뛰는 정책이 아닙니다.
 
 같은 요청을 다시 보내면 같은 `event_id`가 발행됩니다.
 
@@ -181,15 +184,15 @@ SPINE_DEMO_KAFKA_BROKER=localhost:19092 \
 
 브로커가 중단되면 `.spine-demo/outbox-state.json`에 주문과 미발행 레코드가 남습니다. 같은 명령을 다시 실행하면 기존 주문을 재사용하고 대기 메시지를 발행합니다. 발행 성공 후 완료 기록 전에 종료되면 중복 발행이 가능하므로 consumer 멱등 처리가 계속 필요합니다.
 
-운영 환경에서는 주문·outbox 테이블을 같은 DB 트랜잭션에서 변경하고 릴레이 worker 간 행 잠금이나 lease를 구성해야 합니다. outbox 테스트는 발행 성공 뒤 완료 표시 저장에 실패한 상태에서의 재시작·재발행도 검사합니다.
+운영 환경에서는 주문, outbox 테이블을 같은 DB 트랜잭션에서 변경하고 릴레이 worker 간 행 잠금이나 lease를 구성해야 합니다. outbox 테스트는 발행 성공 뒤 완료 표시 저장에 실패한 상태에서의 재시작, 재발행도 검사합니다.
 
-## 시작·종료와 환경 설정
+## 시작, 종료와 환경 설정
 
-`BuildApplication`과 `Validate`는 브로커 접속·리스너 시작·상태 파일 열기를 하지 않습니다. `Run`의 준비 과정에서 publisher와 구독별 reader를 준비합니다. 재고 상태 저장소도 실제 실행 준비에서 생성합니다.
+`BuildApplication`과 `Validate`는 브로커 접속, 리스너 시작, 상태 파일 열기를 하지 않습니다. `Run`의 준비 과정에서 publisher와 구독별 reader를 준비합니다. 재고 상태 저장소도 실제 실행 준비에서 생성합니다.
 
 - reader 재연결: 최초 200ms, 최대 2초, 배수 2, 지터 20%, 무제한 재시도
 - 전달 확인 제한 시간: `WithEventSettlementTimeout(5*time.Second)`
-- 종료: `SIGINT`/`SIGTERM` 후 새 작업 중단, 진행 중인 실행·ACK/NACK·reader 정리, publisher 종료
+- 종료: `SIGINT`/`SIGTERM` 후 새 작업 중단, 진행 중인 실행, ACK/NACK, reader 정리, publisher 종료
 - 종료 대기 제한 시간: 10초
 
 무제한 startup retry를 사용하는 배포에서는 프로세스 생존과 readiness를 구분해야 합니다. 빠른 실패가 필요하면 `MaxAttempts`를 양수로 설정합니다.
@@ -197,17 +200,17 @@ SPINE_DEMO_KAFKA_BROKER=localhost:19092 \
 | 환경변수 | 기본값 | 의미 |
 |---|---|---|
 | `SPINE_DEMO_KAFKA_BROKER` | `localhost:9092` | 브로커 주소 |
-| `SPINE_DEMO_TOPIC_PREFIX` | 비어 있음 | 발행·구독에 같은 물리 토픽 접두사 적용 |
+| `SPINE_DEMO_TOPIC_PREFIX` | 비어 있음 | 발행, 구독에 같은 물리 토픽 접두사 적용 |
 | `SPINE_DEMO_ORDER_GROUP` | `order-service` | 주문 결과 consumer group |
 | `SPINE_DEMO_STOCK_GROUP` | `stock-service` | 재고 consumer group |
 | `SPINE_DEMO_ORDER_ADDRESS` | `SPINE_PORT` 또는 `:8080` | 주문 HTTP 주소 |
 | `SPINE_DEMO_STOCK_STATE` | `.spine-demo/stock-state.json` | 워커 기준 상대 경로. 고정 위치에는 절대 경로 지정 |
 
-`AllowInsecureTransport: true`는 격리된 로컬 Kafka/Redpanda 평문 연결을 위한 명시적 선택입니다. 운영 환경에서는 이 옵션을 제거하고 Kafka 플랫폼 `Config`의 TLS·SASL 또는 `Dialer`·`Transport`를 구성합니다. consumer와 publisher 양쪽에 같은 보안 정책이 필요합니다. 브로커 접근 제어와 메시지 발신자 인증은 이 예제의 멱등 처리로 제공되지 않습니다.
+`AllowInsecureTransport: true`는 격리된 로컬 Kafka/Redpanda 평문 연결을 위한 명시적 선택입니다. 운영 환경에서는 이 옵션을 제거하고 Kafka 플랫폼 `Config`의 TLS, SASL 또는 `Dialer`, `Transport`를 구성합니다. consumer와 publisher 양쪽에 같은 보안 정책이 필요합니다. 브로커 접근 제어와 메시지 발신자 인증은 이 예제의 멱등 처리로 제공되지 않습니다.
 
 ## CLI 계약과 실제 브로커 검증
 
-각 서비스는 독립 Go 모듈과 CLI 프로젝트입니다. 루트 모듈은 공유 이벤트·outbox·E2E를 담고 `go.work`가 세 모듈을 연결합니다. CLI 정적 모듈 검사는 활성 workspace를 지원하지 않으므로 `GOWORK=off`와 서비스의 공유 모듈 `replace`를 사용합니다.
+각 서비스는 독립 Go 모듈과 CLI 프로젝트입니다. 루트 모듈은 공유 이벤트, outbox, E2E를 담고 `go.work`가 세 모듈을 연결합니다. CLI 정적 모듈 검사는 활성 workspace를 지원하지 않으므로 `GOWORK=off`와 서비스의 공유 모듈 `replace`를 사용합니다.
 
 ```sh
 GOWORK=off spine context --root ./order-app --json
@@ -225,7 +228,7 @@ GOWORK=off spine contract probe --root ./stock-app --json
 ./scripts/check.sh
 ```
 
-`check.sh`는 두 앱의 CLI 검사와 세 모듈의 vet·race 테스트를 실행합니다. 루트의 `go test ./...`만으로는 서비스 모듈을 검사하지 않습니다. 부분 probe는 registry와 `Validate`를 대조하며 브로커 연결이나 전달 성공을 검증하지 않습니다. 정적 검사는 factory 설정값·검증 규칙을 실행하지 않으므로 실제 네트워크 정책도 증명하지 않습니다.
+`check.sh`는 두 앱의 CLI 검사와 세 모듈의 vet, race 테스트를 실행합니다. 루트의 `go test ./...`만으로는 서비스 모듈을 검사하지 않습니다. 부분 probe는 registry와 `Validate`를 대조하며 브로커 연결이나 전달 성공을 검증하지 않습니다. 정적 검사는 factory 설정값, 검증 규칙을 실행하지 않으므로 실제 네트워크 정책도 증명하지 않습니다.
 
 Docker E2E는 전용 Redpanda를 시작하고 실제 바이너리 두 개를 실행한 뒤 컨테이너와 volume을 정리합니다.
 
@@ -235,7 +238,7 @@ Docker E2E는 전용 Redpanda를 시작하고 실제 바이너리 두 개를 실
 SPINE_DEMO_KAFKA_PORT=29092 ./scripts/e2e.sh
 ```
 
-검사 범위는 브로커 미준비 시 startup retry, HTTP DTO 거부 후 상태 미생성, 유효 DTO의 주문 왕복, 정상·재고 부족·일시 실패·중복·409 응답, poison 재전달과 종료 drain입니다. 별도 워커로 잘못된 consumer DTO의 반복 NACK과 재고 처리 시도·결정 미생성도 확인합니다. 각 실행의 고유 topic prefix로 물리 토픽 연결을 함께 검증합니다.
+검사 범위는 브로커 미준비 시 startup retry, HTTP DTO 거부 후 상태 미생성, 유효 DTO의 주문 왕복, 정상, 재고 부족, 일시 실패, 중복, 409 응답, poison 재전달과 종료 drain입니다. 별도 워커로 잘못된 consumer DTO의 반복 NACK과 재고 처리 시도, 결정 미생성도 확인합니다. 각 실행의 고유 topic prefix로 물리 토픽 연결을 함께 검증합니다.
 
 [security_test.go](stock-app/src/consumer/order/security_test.go)는 필수 필드 오류, 재시작 후 결정 재발행, 같은 ID의 상충 내용과 동시 전달을 검사합니다. 이 테스트는 애플리케이션의 멱등 동작에 대한 증거이며 인프라의 접근 제어를 검사하지 않습니다.
 
@@ -248,10 +251,10 @@ spine new order-api --module example.com/order-api --event-platform kafka --vali
 spine new stock-worker --module example.com/stock-worker --platform none --event-platform kafka --validator playground
 ```
 
-생성기는 플랫폼·검증기 조립을 만들며 주문·재고 업무 규칙과 내구성 정책은 직접 구현합니다. 추가 consumer는 다음과 같이 계획을 검토합니다.
+생성기는 플랫폼, 검증기 조립을 만들며 주문, 재고 업무 규칙과 내구성 정책은 직접 구현합니다. 추가 consumer는 다음과 같이 계획을 검토합니다.
 
 ```sh
 GOWORK=off spine g consumer restock --root ./stock-app --topic stock.restock --field quantity:int --dry-run --json
 ```
 
-`changes`, `diff`, `base_hash`를 확인하고 `--dry-run`을 `--if-match <base_hash>`로 바꿔 적용합니다. 의존성만 갱신하는 `spine update`는 현재의 workspace·로컬 replace 프로젝트를 지원하지 않으므로 이 저장소에 바로 적용하지 않습니다. [공식 CLI 문서](https://github.com/NARUBROWN/spine-cli#readme)에서 선택한 레시피와 한계를 확인하고 모듈 변경·소스 변경·브로커 E2E를 각각 검증하십시오.
+`changes`, `diff`, `base_hash`를 확인하고 `--dry-run`을 `--if-match <base_hash>`로 바꿔 적용합니다. 의존성만 갱신하는 `spine update`는 현재의 workspace와 로컬 replace 프로젝트를 지원하지 않으므로 이 저장소에 바로 적용하지 않습니다. [공식 CLI 문서](https://github.com/NARUBROWN/spine-cli#readme)에서 선택한 레시피와 한계를 확인하고 모듈 변경, 소스 변경과 브로커 E2E를 각각 검증하십시오.
