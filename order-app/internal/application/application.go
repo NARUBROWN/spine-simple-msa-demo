@@ -6,7 +6,6 @@ import (
 
 	stockconsumer "github.com/NARUBROWN/spine-simple-msa/order-app/src/consumer/stock"
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/controller"
-	"github.com/NARUBROWN/spine-simple-msa/order-app/src/route"
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
 
 	"github.com/NARUBROWN/spine"
@@ -14,6 +13,7 @@ import (
 	kafkaplatform "github.com/NARUBROWN/spine-kafka-platform"
 	playground "github.com/NARUBROWN/spine-validator-playground"
 	"github.com/NARUBROWN/spine/pkg/boot"
+	"github.com/NARUBROWN/spine/pkg/constructor"
 )
 
 // BuildApplication은 브로커나 HTTP 리스너에 연결하지 않고 주문 서비스를 구성합니다.
@@ -42,13 +42,16 @@ func BuildApplication() (spine.App, boot.Options, error) {
 		),
 		spine.WithValidator(validator),
 	)
-	app.Constructor(service.NewOrderTrackerService, service.NewOrderService, controller.NewOrderController)
-	if err := route.Register(app); err != nil {
-		return nil, boot.Options{}, err
-	}
+	app.Constructor(
+		constructor.Service(&service.OrderTrackerService{}),
+		constructor.Service(&service.OrderService{}),
+		constructor.Controller(&controller.OrderController{}),
+		constructor.Custom(&stockconsumer.StockConsumer{}),
+	)
 	if err := stockconsumer.Register(app); err != nil {
 		return nil, boot.Options{}, err
 	}
+
 	return app, boot.Options{
 		Address:                envOrDefault("SPINE_DEMO_ORDER_ADDRESS", ":"+envOrDefault("SPINE_PORT", "8080")),
 		EnableGracefulShutdown: true,

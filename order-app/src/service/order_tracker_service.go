@@ -20,7 +20,7 @@ type OrderTrackerService struct {
 	results    map[string]struct{}
 }
 
-func NewOrderTrackerService() *OrderTrackerService {
+func (*OrderTrackerService) Constructor() *OrderTrackerService {
 	return &OrderTrackerService{
 		orders:     make(map[int64]OrderStatus),
 		quantities: make(map[int64]int),

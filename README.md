@@ -46,6 +46,33 @@ POST /orders {order_id, quantity}
 
 HTTP 핸들러는 `spine.Ctx`와 본문용 `input.Body[dto.CreateOrderRequest]` 또는 경로용 `input.Path[dto.OrderPath]`를 받습니다. `OrderPath`의 `path:"order_id"`는 라우트 이름과 연결됩니다. consumer는 `spine.Ctx`, 이벤트 이름과 이벤트 DTO를 받습니다. 서비스에는 `ctx.ExecutionContext().Context()`로 꺼낸 표준 컨텍스트를 전달합니다. Spine이 입력을 해석하고 선택된 검증기를 호출한 뒤 DI로 만든 핸들러를 실행합니다. 서비스에는 HTTP request나 Kafka reader/writer가 없습니다.
 
+HTTP 경로와 인라인 처리 콜백은 `OrderController.RegisterRoutes`에 모으며 `/orders`와 `/scenarios` 그룹을 사용합니다. 별도 `src/route`와 `app.Route`는 사용하지 않습니다. 이벤트 구독은 각 수신 패키지의 `module.go`로 분리하고, 앱 조립부에서 해당 등록 함수를 호출합니다.
+
+```go
+app.Constructor(
+    constructor.Service(&service.OrderTrackerService{}),
+    constructor.Service(&service.OrderService{}),
+    constructor.Controller(&controller.OrderController{}),
+    constructor.Custom(&stockconsumer.StockConsumer{}),
+)
+if err := stockconsumer.Register(app); err != nil {
+    return nil, boot.Options{}, err
+}
+```
+
+생성자는 `BuildApplication`에서 등록하고, `order-app/src/consumer/stock/module.go`는 토픽과 수신 메서드만 연결합니다.
+
+```go
+func Register(app spine.App) error {
+    if err := app.Consumers().Register("stock.reserved", (*StockConsumer).OnReserved); err != nil {
+        return err
+    }
+    return app.Consumers().Register("stock.rejected", (*StockConsumer).OnRejected)
+}
+```
+
+컴포넌트는 `Constructor(의존성...) *자기타입` 메서드를 구현합니다. 이벤트 수신 객체에는 전용 역할이 없어 `constructor.Custom(&타입{})`을 사용합니다. 재고 저장소처럼 오류를 반환하는 초기화 절차는 앱 조립 패키지의 이름 있는 팩토리를 `constructor.Custom(NewStockStore)`로 등록하고 실제 준비 단계에서 실행합니다. `constructor`는 `github.com/NARUBROWN/spine/pkg/constructor`입니다.
+
 숫자가 아닌 주문 ID는 HTTP 400과 `{"message":"invalid path field order_id","in":"path"}`를 반환합니다. v0.6.5 예제도 HTTP 400을 반환했지만 오류 메시지가 다르고 `in` 필드는 없었습니다.
 
 `publish.Event`는 실행 context에 도메인 이벤트를 기록합니다. Spine은 핸들러 후처리에서 발행하고, consumer의 핸들러와 후처리가 성공하면 ACK합니다. 실패하면 NACK합니다. Kafka의 실패 offset 보호와 전송은 Kafka 플랫폼이, reader 재생성과 backoff, 종료 순서는 Spine이 담당합니다.

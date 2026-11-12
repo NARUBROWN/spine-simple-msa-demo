@@ -12,7 +12,7 @@ type StockConsumer struct {
 	tracker *service.OrderTrackerService
 }
 
-func NewStockConsumer(tracker *service.OrderTrackerService) *StockConsumer {
+func (*StockConsumer) Constructor(tracker *service.OrderTrackerService) *StockConsumer {
 	return &StockConsumer{tracker: tracker}
 }
 
