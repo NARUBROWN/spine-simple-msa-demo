@@ -1,6 +1,6 @@
 # Spine 주문·재고 MSA 예제
 
-HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.7.0-preview.2`, CLI Preview, Echo, Kafka, playground 플랫폼 `v0.2.0-preview.1`을 사용합니다.
+HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.7.5`, CLI v0.4.4, Echo `v0.2.1`, Kafka와 playground 플랫폼 `v0.2.0`을 사용합니다.
 
 HTTP와 메시지 소비를 따로 구현하면 JSON 해석, 입력 검증, 의존성 구성, 오류 처리와 종료 흐름을 각 진입점에서 반복하기 쉽습니다. 이 예제는 **핸들러의 타입과 등록으로 실행 흐름을 구성하고, 업무 규칙과 전송 구현을 분리하는 Spine의 방식**을 보여줍니다.
 
@@ -57,7 +57,7 @@ HTTP 핸들러는 `context.Context`와 본문용 `*dto.CreateOrderRequest` 또�
 playground 검증기를 선택했으므로 Go `1.26.0` 이상이 필요합니다. Docker는 아래 격리 브로커와 E2E에 사용합니다.
 
 ```sh
-go install github.com/NARUBROWN/spine-cli/cmd/spine@preview
+go install github.com/NARUBROWN/spine-cli/cmd/spine@v0.4.4
 spine version
 # 워크스페이스의 각 모듈 의존성을 받습니다.
 go mod download
@@ -65,7 +65,7 @@ go -C order-app mod download
 go -C stock-app mod download
 ```
 
-`@preview`는 설치 시점의 CLI Preview 브랜치를 사용합니다. CI 검증 버전은 `.github/example-channels.json`에 고정합니다.
+CLI는 정식 버전 `v0.4.4`를 설치합니다. CI 검증 버전도 `.github/example-channels.json`에 고정합니다.
 
 Kafka나 Redpanda가 이미 있다면 그 주소를 사용합니다. 이 저장소의 개발용 Redpanda는 다음 명령으로 시작할 수 있습니다.
 
