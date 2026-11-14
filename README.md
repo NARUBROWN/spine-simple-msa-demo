@@ -64,10 +64,10 @@ if err := stockconsumer.Register(app); err != nil {
 
 ```go
 func Register(app spine.App) error {
-    if err := app.Consumers().Register("stock.reserved", (*StockConsumer).OnReserved); err != nil {
+    if err := app.Consumers().Register(events.StockReservedDestination, (*StockConsumer).OnReserved); err != nil {
         return err
     }
-    return app.Consumers().Register("stock.rejected", (*StockConsumer).OnRejected)
+    return app.Consumers().Register(events.StockRejectedDestination, (*StockConsumer).OnRejected)
 }
 ```
 
@@ -77,7 +77,7 @@ func Register(app spine.App) error {
 
 `publish.Event(ctx, destination, publish.Fields{...})`는 JSON 본문을 현재 실행의 발행 대기열에 넣습니다. 반환 오류는 대기열 등록 실패이며, 브로커 전송은 후처리에서 확인합니다. consumer의 핸들러와 후처리가 성공하면 ACK합니다. 실패하면 NACK합니다. Kafka의 실패 offset 보호와 전송은 Kafka 플랫폼이, reader 재생성과 backoff, 종료 순서는 Spine이 담당합니다.
 
-주문 앱은 Echo, Kafka, 검증기를 선택합니다. 재고 앱은 Kafka, 검증기만 선택한 워커이며 HTTP 플랫폼과 리스너를 두지 않습니다. `shared/events/destinations.go`에 논리 목적지를 정의합니다. 주문 앱은 `order.created`를, 재고 앱은 `stock.reserved`와 `stock.rejected`를 각 Kafka 설정의 `PublishDestinations`에 넘깁니다. 서비스는 이 상수로 발행합니다. Consumer 등록에는 CLI가 정적으로 검사할 수 있도록 같은 논리 이름을 문자열로 적습니다. Kafka 팩토리는 `TopicPrefix`를 적용한 물리 토픽을 시작할 때 확인합니다.
+주문 앱은 Echo, Kafka, 검증기를 선택합니다. 재고 앱은 Kafka, 검증기만 선택한 워커이며 HTTP 플랫폼과 리스너를 두지 않습니다. `shared/events/destinations.go`에 논리 목적지를 정의합니다. 주문 앱은 `order.created`를, 재고 앱은 `stock.reserved`와 `stock.rejected`를 각 Kafka 설정의 `PublishDestinations`에 넘깁니다. 서비스 발행과 consumer 등록에 같은 상수를 사용합니다. Kafka 팩토리는 `TopicPrefix`를 적용한 물리 토픽을 시작할 때 확인합니다.
 
 ## 실행하기
 
