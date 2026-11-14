@@ -33,7 +33,7 @@ func NewOrderCreated(orderID int64, quantity int, scenario string, failuresBefor
 }
 
 func (o OrderCreated) Name() string {
-	return "order.created"
+	return OrderCreatedDestination
 }
 
 func (o OrderCreated) OccurredAt() time.Time {

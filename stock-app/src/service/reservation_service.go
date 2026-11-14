@@ -37,8 +37,7 @@ func (c *ReservationService) Reserve(ctx context.Context, eventName string, even
 			return err
 		}
 		log.Printf("Duplicate event detected: event=%s event_id=%s order_id=%d outcome=%s", eventName, event.EventID, event.OrderID, decision.Outcome)
-		publishDecision(ctx, decision)
-		return nil
+		return publishDecision(ctx, decision)
 	}
 
 	attempt, err := c.store.Attempt(event.EventID)
@@ -57,7 +56,9 @@ func (c *ReservationService) Reserve(ctx context.Context, eventName string, even
 	if err := sameOrder(event, decision); err != nil {
 		return err
 	}
-	publishDecision(ctx, decision)
+	if err := publishDecision(ctx, decision); err != nil {
+		return err
+	}
 	log.Printf("Stock decision completed: event=%s event_id=%s order_id=%d outcome=%s attempt=%d", eventName, event.EventID, event.OrderID, decision.Outcome, attempt)
 	return nil
 }
@@ -97,24 +98,22 @@ func decide(event events.OrderCreated) store.Decision {
 	return decision
 }
 
-func publishDecision(ctx context.Context, decision store.Decision) {
+func publishDecision(ctx context.Context, decision store.Decision) error {
+	fields := publish.Fields{
+		"source_event_id": decision.EventID,
+		"order_id":        decision.OrderID,
+		"quantity":        decision.Quantity,
+		"at":              decision.At,
+	}
 	switch decision.Outcome {
 	case "reserved":
-		publish.Event(ctx, events.StockReserved{
-			EventID:       "stock-reserved-" + decision.EventID,
-			SourceEventID: decision.EventID,
-			OrderID:       decision.OrderID,
-			Quantity:      decision.Quantity,
-			At:            decision.At,
-		})
+		fields["event_id"] = "stock-reserved-" + decision.EventID
+		return publish.Event(ctx, events.StockReservedDestination, fields)
 	case "rejected":
-		publish.Event(ctx, events.StockRejected{
-			EventID:       "stock-rejected-" + decision.EventID,
-			SourceEventID: decision.EventID,
-			OrderID:       decision.OrderID,
-			Quantity:      decision.Quantity,
-			Reason:        decision.Reason,
-			At:            decision.At,
-		})
+		fields["event_id"] = "stock-rejected-" + decision.EventID
+		fields["reason"] = decision.Reason
+		return publish.Event(ctx, events.StockRejectedDestination, fields)
+	default:
+		return fmt.Errorf("unknown stock outcome %q", decision.Outcome)
 	}
 }

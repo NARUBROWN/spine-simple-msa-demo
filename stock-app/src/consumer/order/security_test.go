@@ -2,10 +2,10 @@ package order
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"testing"
 
@@ -67,7 +67,7 @@ func TestDuplicateAfterRestartReplaysStoredDecisionAndRejectsConflictingPayload(
 	if err := consumer.OnCreated(handlerContext(ctx), event.Name(), event); err != nil {
 		t.Fatal(err)
 	}
-	if len(first.events) != 1 || len(replay.events) != 1 || !reflect.DeepEqual(first.events[0], replay.events[0]) {
+	if len(first.events) != 1 || len(replay.events) != 1 || first.events[0].Name() != replay.events[0].Name() || string(eventJSON(t, first.events[0])) != string(eventJSON(t, replay.events[0])) {
 		t.Fatalf("replay must publish the original result: first=%v replay=%v", first.events, replay.events)
 	}
 	for _, mutate := range []func(*events.OrderCreated){
@@ -130,17 +130,35 @@ func TestConcurrentConflictingDeliveriesPublishOnlyStoredDecision(t *testing.T) 
 		if got.err != nil || len(got.events) != 1 {
 			t.Fatalf("matching duplicate was not replayed: %+v", got)
 		}
-		switch result := got.events[0].(type) {
-		case events.StockReserved:
+		payload := eventJSON(t, got.events[0])
+		switch got.events[0].Name() {
+		case events.StockReservedDestination:
+			var result events.StockReserved
+			if err := json.Unmarshal(payload, &result); err != nil {
+				t.Fatal(err)
+			}
 			if decision.Outcome != "reserved" || result.Quantity != decision.Quantity || !result.At.Equal(decision.At) {
 				t.Fatalf("result differs from stored decision: %+v, %+v", result, decision)
 			}
-		case events.StockRejected:
+		case events.StockRejectedDestination:
+			var result events.StockRejected
+			if err := json.Unmarshal(payload, &result); err != nil {
+				t.Fatal(err)
+			}
 			if decision.Outcome != "rejected" || result.Quantity != decision.Quantity || !result.At.Equal(decision.At) {
 				t.Fatalf("result differs from stored decision: %+v, %+v", result, decision)
 			}
 		default:
-			t.Fatalf("unexpected result type %T", result)
+			t.Fatalf("unexpected destination %s", got.events[0].Name())
 		}
 	}
+}
+
+func eventJSON(t *testing.T, event publish.DomainEvent) []byte {
+	t.Helper()
+	data, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

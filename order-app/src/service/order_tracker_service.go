@@ -29,15 +29,28 @@ func (*OrderTrackerService) Constructor() *OrderTrackerService {
 }
 
 func (t *OrderTrackerService) Accepted(orderID int64, eventID string, quantity int) (OrderStatus, bool) {
+	status, accepted, _ := t.accept(orderID, eventID, quantity, func() error { return nil })
+	return status, accepted
+}
+
+// 충돌 검사와 발행 등록이 성공한 뒤에만 새 주문을 상태 조회에 노출합니다.
+func (t *OrderTrackerService) accept(orderID int64, eventID string, quantity int, enqueue func() error) (OrderStatus, bool, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if current, exists := t.orders[orderID]; exists {
-		return current, current.EventID == eventID && t.quantities[orderID] == quantity
+	current, exists := t.orders[orderID]
+	if exists && (current.EventID != eventID || t.quantities[orderID] != quantity) {
+		return current, false, nil
+	}
+	if err := enqueue(); err != nil {
+		return OrderStatus{}, false, err
+	}
+	if exists {
+		return current, true, nil
 	}
 	status := OrderStatus{OrderID: orderID, EventID: eventID, Status: "pending", UpdatedAt: time.Now().UTC()}
 	t.orders[orderID] = status
 	t.quantities[orderID] = quantity
-	return status, true
+	return status, true, nil
 }
 
 func (t *OrderTrackerService) Complete(resultEventID string, status OrderStatus) bool {

@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -60,28 +61,27 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 	build(t, repositoryRoot, orderBinary, "./order-app")
 	build(t, repositoryRoot, stockBinary, "./stock-app")
 
-	t.Run("consumer waits for broker before becoming ready", func(t *testing.T) {
-		unavailableAddress := unusedAddress(t)
+	t.Run("publisher startup fails before serving when broker is unavailable", func(t *testing.T) {
 		process := start(t, repositoryRoot, stockBinary,
-			"SPINE_DEMO_KAFKA_BROKER="+unavailableAddress,
+			"SPINE_DEMO_KAFKA_BROKER="+unusedAddress(t),
 			"SPINE_DEMO_STOCK_GROUP=e2e-readiness",
 			"SPINE_DEMO_STOCK_STATE="+filepath.Join(temporaryDirectory, "readiness.json"),
 		)
-		time.Sleep(700 * time.Millisecond)
+		t.Cleanup(func() { stop(t, process) })
 		select {
 		case <-process.exited:
-			t.Fatalf("consumer exited instead of retrying startup: %v\n%s", <-process.done, process.logs.String())
-		default:
+			if err := <-process.done; err == nil || !strings.Contains(process.logs.String(), "publisher initialization failed") {
+				t.Fatalf("expected publisher startup failure: %v\n%s", err, process.logs.String())
+			}
+		case <-time.After(30 * time.Second):
+			t.Fatal("publisher startup did not fail")
 		}
-		if strings.Contains(process.logs.String(), "Starting consumer for topic") {
-			t.Fatalf("consumer became ready without a broker:\n%s", process.logs.String())
-		}
-		stop(t, process)
 	})
 
 	port := unusedPort(t)
 	unique := fmt.Sprintf("%d", time.Now().UnixNano())
 	topicPrefix := "e2e." + unique + "."
+	createTopics(t, broker, topicPrefix)
 	stock := start(t, repositoryRoot, stockBinary,
 		"SPINE_DEMO_KAFKA_BROKER="+broker,
 		"SPINE_DEMO_STOCK_GROUP=e2e-stock-"+unique,
@@ -194,23 +194,7 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 	t.Run("consumer validates DTO before service and NACKs invalid delivery", func(t *testing.T) {
 		prefix := topicPrefix + "validation."
 		statePath := filepath.Join(temporaryDirectory, "validation.json")
-		// 이 격리 워커에는 결과 consumer가 없으므로 결과 토픽도 테스트가 준비합니다.
-		setupCtx, setupCancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer setupCancel()
-		conn, err := kafka.DialContext(setupCtx, "tcp", broker)
-		if err != nil {
-			t.Fatal(err)
-		}
-		deadline, _ := setupCtx.Deadline()
-		conn.SetDeadline(deadline)
-		err = conn.CreateTopics(
-			kafka.TopicConfig{Topic: prefix + "order.created", NumPartitions: 1, ReplicationFactor: 1},
-			kafka.TopicConfig{Topic: prefix + "stock.reserved", NumPartitions: 1, ReplicationFactor: 1},
-		)
-		conn.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
+		createTopics(t, broker, prefix)
 		worker := start(t, repositoryRoot, stockBinary,
 			"SPINE_DEMO_KAFKA_BROKER="+broker,
 			"SPINE_DEMO_STOCK_GROUP=e2e-validation-"+unique,
@@ -219,7 +203,7 @@ func TestKafkaRoundTripDeliveryContracts(t *testing.T) {
 		)
 		t.Cleanup(func() { stop(t, worker) })
 		waitForLog(t, worker.logs, "Starting consumer for topic 'order.created'", 15*time.Second)
-		writer := &kafka.Writer{Addr: kafka.TCP(broker), Topic: prefix + "order.created",
+		writer := &kafka.Writer{Addr: kafka.TCP(broker), Topic: prefix + events.OrderCreatedDestination,
 			RequiredAcks: kafka.RequireAll, AllowAutoTopicCreation: true}
 		defer writer.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -432,4 +416,27 @@ func unusedPort(t *testing.T) int {
 	}
 	defer listener.Close()
 	return listener.Addr().(*net.TCPAddr).Port
+}
+
+// 발행기를 시작하기 전에 모든 목적지의 물리 토픽을 준비합니다.
+func createTopics(t *testing.T, broker, prefix string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := kafka.DialContext(ctx, "tcp", broker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	deadline, _ := ctx.Deadline()
+	if err := conn.SetDeadline(deadline); err != nil {
+		t.Fatal(err)
+	}
+	var topics []kafka.TopicConfig
+	for _, name := range []string{events.OrderCreatedDestination, events.StockReservedDestination, events.StockRejectedDestination} {
+		topics = append(topics, kafka.TopicConfig{Topic: prefix + name, NumPartitions: 1, ReplicationFactor: 1})
+	}
+	if err := conn.CreateTopics(topics...); err != nil {
+		t.Fatal(err)
+	}
 }

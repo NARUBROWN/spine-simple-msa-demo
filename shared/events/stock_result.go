@@ -11,7 +11,7 @@ type StockReserved struct {
 }
 
 func (s StockReserved) Name() string {
-	return "stock.reserved"
+	return StockReservedDestination
 }
 
 func (s StockReserved) OccurredAt() time.Time {
@@ -28,7 +28,7 @@ type StockRejected struct {
 }
 
 func (s StockRejected) Name() string {
-	return "stock.rejected"
+	return StockRejectedDestination
 }
 
 func (s StockRejected) OccurredAt() time.Time {

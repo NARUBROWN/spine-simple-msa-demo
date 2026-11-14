@@ -7,6 +7,7 @@ import (
 	stockconsumer "github.com/NARUBROWN/spine-simple-msa/order-app/src/consumer/stock"
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/controller"
 	"github.com/NARUBROWN/spine-simple-msa/order-app/src/service"
+	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 
 	"github.com/NARUBROWN/spine"
 	echoplatform "github.com/NARUBROWN/spine-echo-platform"
@@ -21,7 +22,8 @@ func BuildApplication() (spine.App, boot.Options, error) {
 	factory, err := kafkaplatform.NewFactory(kafkaplatform.Config{
 		Brokers: []string{envOrDefault("SPINE_DEMO_KAFKA_BROKER", "localhost:9092")},
 		Consume: true, Publish: true,
-		GroupID: envOrDefault("SPINE_DEMO_ORDER_GROUP", "order-service"),
+		PublishDestinations: events.Destinations{events.OrderCreatedDestination},
+		GroupID:             envOrDefault("SPINE_DEMO_ORDER_GROUP", "order-service"),
 		// 물리 토픽 접두사는 플랫폼에서만 적용하고 consumer는 논리 이름을 등록합니다.
 		TopicPrefix:            os.Getenv("SPINE_DEMO_TOPIC_PREFIX"),
 		AllowInsecureTransport: true, // 격리된 로컬 Kafka/Redpanda 예제입니다.

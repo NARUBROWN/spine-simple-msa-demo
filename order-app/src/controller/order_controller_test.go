@@ -40,3 +40,16 @@ func TestChangedQuantityReturnsConflictWithoutPublishing(t *testing.T) {
 		t.Fatalf("conflicting request published another event: %d", len(bus.events))
 	}
 }
+
+func TestPublishRegistrationFailureDoesNotLeavePendingOrder(t *testing.T) {
+	tracker := (&service.OrderTrackerService{}).Constructor()
+	orders := (&service.OrderService{}).Constructor(tracker)
+	const orderID int64 = 101
+
+	if _, err := orders.Place(context.Background(), orderID, defaultQuantity, events.ScenarioNormal, 0); err == nil {
+		t.Fatal("expected a missing publisher error")
+	}
+	if _, exists := orders.Status(orderID); exists {
+		t.Fatal("failed publish registration left a pending order")
+	}
+}
