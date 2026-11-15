@@ -1,6 +1,6 @@
 # Spine 주문, 재고 MSA 예제
 
-HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.7.5`, CLI v0.4.4, Echo `v0.2.1`, Kafka와 playground 플랫폼 `v0.2.0`을 사용합니다.
+HTTP 주문 요청이 Kafka 이벤트를 거쳐 재고 처리 결과로 돌아오는 예제입니다. Spine `v0.7.6-preview.1`, CLI v0.4.5-preview.5, Echo `v0.2.1-preview.1`, Kafka `v0.3.0-preview.1`, Playground `v0.2.1-preview.1`을 사용합니다.
 
 HTTP와 메시지 소비를 따로 구현하면 JSON 해석, 입력 검증, 의존성 구성, 오류 처리와 종료 흐름을 각 진입점에서 반복하기 쉽습니다. 이 예제는 **핸들러의 타입과 등록으로 실행 흐름을 구성하고, 업무 규칙과 전송 구현을 분리하는 Spine의 방식**을 보여줍니다.
 
@@ -64,10 +64,10 @@ if err := stockconsumer.Register(app); err != nil {
 
 ```go
 func Register(app spine.App) error {
-    if err := app.Consumers().Register("stock.reserved", (*StockConsumer).OnReserved); err != nil {
+    if err := app.Consumers().Register(events.StockReservedDestination, (*StockConsumer).OnReserved); err != nil {
         return err
     }
-    return app.Consumers().Register("stock.rejected", (*StockConsumer).OnRejected)
+    return app.Consumers().Register(events.StockRejectedDestination, (*StockConsumer).OnRejected)
 }
 ```
 
@@ -75,16 +75,16 @@ func Register(app spine.App) error {
 
 숫자가 아닌 주문 ID는 HTTP 400과 `{"message":"invalid path field order_id","in":"path"}`를 반환합니다. v0.6.5 예제도 HTTP 400을 반환했지만 오류 메시지가 다르고 `in` 필드는 없었습니다.
 
-`publish.Event`는 실행 context에 도메인 이벤트를 기록합니다. Spine은 핸들러 후처리에서 발행하고, consumer의 핸들러와 후처리가 성공하면 ACK합니다. 실패하면 NACK합니다. Kafka의 실패 offset 보호와 전송은 Kafka 플랫폼이, reader 재생성과 backoff, 종료 순서는 Spine이 담당합니다.
+`publish.Event(ctx, destination, publish.Fields{...})`는 JSON 본문을 현재 실행의 발행 대기열에 넣습니다. 반환 오류는 대기열 등록 실패이며, 브로커 전송은 후처리에서 확인합니다. consumer의 핸들러와 후처리가 성공하면 ACK합니다. 실패하면 NACK합니다. Kafka의 실패 offset 보호와 전송은 Kafka 플랫폼이, reader 재생성과 backoff, 종료 순서는 Spine이 담당합니다.
 
-주문 앱은 Echo, Kafka, 검증기를 선택합니다. 재고 앱은 Kafka, 검증기만 선택한 워커이며 HTTP 플랫폼과 리스너를 두지 않습니다. consumer는 `order.created` 같은 **논리 이름**을 등록하고, `TopicPrefix`는 Kafka factory에서 구독과 발행에 한 번만 적용합니다.
+주문 앱은 Echo, Kafka, 검증기를 선택합니다. 재고 앱은 Kafka, 검증기만 선택한 워커이며 HTTP 플랫폼과 리스너를 두지 않습니다. `shared/events/destinations.go`에 논리 목적지를 정의합니다. 주문 앱은 `order.created`를, 재고 앱은 `stock.reserved`와 `stock.rejected`를 각 Kafka 설정의 `PublishDestinations`에 넘깁니다. 서비스 발행과 consumer 등록에 같은 상수를 사용합니다. Kafka 팩토리는 `TopicPrefix`를 적용한 물리 토픽을 시작할 때 확인합니다.
 
 ## 실행하기
 
 playground 검증기를 선택했으므로 Go `1.26.0` 이상이 필요합니다. Docker는 아래 격리 브로커와 E2E에 사용합니다.
 
 ```sh
-go install github.com/NARUBROWN/spine-cli/cmd/spine@v0.4.4
+go install github.com/NARUBROWN/spine-cli/cmd/spine@v0.4.5-preview.5
 spine version
 # 워크스페이스의 각 모듈 의존성을 받습니다.
 go mod download
@@ -92,7 +92,7 @@ go -C order-app mod download
 go -C stock-app mod download
 ```
 
-CLI는 정식 버전 `v0.4.4`를 설치합니다. CI 검증 버전도 `.github/example-channels.json`에 고정합니다.
+CLI는 Preview 버전 `v0.4.5-preview.5`를 설치합니다. CI 검증 버전도 `.github/example-channels.json`에 고정합니다.
 
 Kafka나 Redpanda가 이미 있다면 그 주소를 사용합니다. 이 저장소의 개발용 Redpanda는 다음 명령으로 시작할 수 있습니다.
 
@@ -105,6 +105,15 @@ docker compose -f docker-compose.e2e.yml up -d --wait
 ```sh
 export SPINE_DEMO_KAFKA_BROKER=localhost:19092
 export SPINE_DEMO_TOPIC_PREFIX=my-demo.
+```
+
+두 앱을 시작하기 전에 물리 토픽 세 개를 만듭니다. 이 저장소의 Redpanda를 사용한다면 아래 명령을 실행하세요.
+
+```sh
+docker compose -f docker-compose.e2e.yml exec -T kafka rpk topic create \
+  "${SPINE_DEMO_TOPIC_PREFIX}order.created" \
+  "${SPINE_DEMO_TOPIC_PREFIX}stock.reserved" \
+  "${SPINE_DEMO_TOPIC_PREFIX}stock.rejected"
 ```
 
 터미널 1에서 재고 워커를 실행합니다.
@@ -222,7 +231,7 @@ SPINE_DEMO_KAFKA_BROKER=localhost:19092 \
 - 종료: `SIGINT`/`SIGTERM` 후 새 작업 중단, 진행 중인 실행, ACK/NACK, reader 정리, publisher 종료
 - 종료 대기 제한 시간: 10초
 
-무제한 startup retry를 사용하는 배포에서는 프로세스 생존과 readiness를 구분해야 합니다. 빠른 실패가 필요하면 `MaxAttempts`를 양수로 설정합니다.
+발행기가 브로커에 연결할 수 없거나 물리 토픽을 찾을 수 없으면 앱 시작이 실패합니다. 구독 reader의 재시도 횟수는 `MaxAttempts`로 제한할 수 있습니다.
 
 | 환경변수 | 기본값 | 의미 |
 |---|---|---|
@@ -265,7 +274,7 @@ Docker E2E는 전용 Redpanda를 시작하고 실제 바이너리 두 개를 실
 SPINE_DEMO_KAFKA_PORT=29092 ./scripts/e2e.sh
 ```
 
-검사 범위는 브로커 미준비 시 startup retry, HTTP DTO 거부 후 상태 미생성, 유효 DTO의 주문 왕복, 정상, 재고 부족, 일시 실패, 중복, 409 응답, poison 재전달과 종료 drain입니다. 별도 워커로 잘못된 consumer DTO의 반복 NACK과 재고 처리 시도, 결정 미생성도 확인합니다. 각 실행의 고유 topic prefix로 물리 토픽 연결을 함께 검증합니다.
+검사 범위는 브로커에 연결할 수 없을 때 발행기 시작 실패, HTTP DTO 거부 후 상태 미생성, 유효 DTO의 주문 왕복, 정상, 재고 부족, 일시 실패, 중복, 409 응답, poison 재전달과 종료 drain입니다. 별도 워커로 잘못된 consumer DTO의 반복 NACK과 재고 처리 시도, 결정 미생성도 확인합니다. 각 실행의 고유 topic prefix로 물리 토픽 연결을 함께 검증합니다.
 
 [security_test.go](stock-app/src/consumer/order/security_test.go)는 필수 필드 오류, 재시작 후 결정 재발행, 같은 ID의 상충 내용과 동시 전달을 검사합니다. 이 테스트는 애플리케이션의 멱등 동작에 대한 증거이며 인프라의 접근 제어를 검사하지 않습니다.
 

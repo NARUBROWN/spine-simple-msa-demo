@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/NARUBROWN/spine-simple-msa/shared/events"
 	"github.com/NARUBROWN/spine/pkg/event/publish"
@@ -24,11 +25,25 @@ func (s *OrderService) Place(ctx context.Context, orderID int64, quantity int, s
 		return OrderStatus{}, ErrInvalidOrder
 	}
 	event := events.NewOrderCreated(orderID, quantity, scenario, failuresBeforeSuccess)
-	status, accepted := s.tracker.Accepted(orderID, event.EventID, quantity)
+	fields := publish.Fields{
+		"event_id": event.EventID,
+		"order_id": event.OrderID,
+		"quantity": event.Quantity,
+		"scenario": event.Scenario,
+		"at":       event.At,
+	}
+	if event.FailuresBeforeSuccess != 0 {
+		fields["failures_before_success"] = event.FailuresBeforeSuccess
+	}
+	status, accepted, err := s.tracker.accept(orderID, event.EventID, quantity, func() error {
+		return publish.Event(ctx, events.OrderCreatedDestination, fields)
+	})
+	if err != nil {
+		return OrderStatus{}, fmt.Errorf("queue order event: %w", err)
+	}
 	if !accepted {
 		return OrderStatus{}, ErrOrderConflict
 	}
-	publish.Event(ctx, event)
 	return status, nil
 }
 func (s *OrderService) Status(orderID int64) (OrderStatus, bool) { return s.tracker.Get(orderID) }

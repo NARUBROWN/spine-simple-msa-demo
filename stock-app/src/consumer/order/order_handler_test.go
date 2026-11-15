@@ -41,8 +41,8 @@ func TestOrderConsumerRetriesThenDeduplicates(t *testing.T) {
 	if len(bus.events) != 2 {
 		t.Fatalf("published results = %d, want one original and one duplicate result", len(bus.events))
 	}
-	if _, ok := bus.events[0].(events.StockReserved); !ok {
-		t.Fatalf("published event type = %T", bus.events[0])
+	if got := bus.events[0].Name(); got != events.StockReservedDestination {
+		t.Fatalf("published destination = %s", got)
 	}
 }
 
@@ -76,7 +76,7 @@ func TestOrderConsumerPublishesRejection(t *testing.T) {
 	if len(bus.events) != 1 {
 		t.Fatalf("published results = %d", len(bus.events))
 	}
-	if _, ok := bus.events[0].(events.StockRejected); !ok {
-		t.Fatalf("published event type = %T", bus.events[0])
+	if got := bus.events[0].Name(); got != events.StockRejectedDestination {
+		t.Fatalf("published destination = %s", got)
 	}
 }
